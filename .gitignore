@@ -30,8 +30,5 @@ logs/
 *.log
 npm-debug.log*
 
-# Prisma
-backend/prisma/migrations/**/migration_lock.toml
-
 # Test
 coverage/

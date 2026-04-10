@@ -1,0 +1,71 @@
+{
+  "app": { "title": "校园综合智慧管理系统", "subtitle": "团委统筹 · 学生组织 OA · 个人时间轴" },
+  "nav": {
+    "dashboard": "工作台",
+    "timeline": "时间轴与课表",
+    "tasks": "组织任务",
+    "orgs": "组织",
+    "profile": "个人档案",
+    "admin": "团委后台",
+    "notifications": "通知",
+    "login": "登录"
+  },
+  "auth": {
+    "email": "邮箱",
+    "password": "密码",
+    "login": "登录",
+    "logout": "退出登录",
+    "hint": "演示账号见 README"
+  },
+  "common": {
+    "save": "保存",
+    "create": "创建",
+    "refresh": "刷新",
+    "status": "状态",
+    "due": "截止",
+    "loading": "加载中…",
+    "error": "出错了",
+    "language": "语言",
+    "search": "搜索（前端过滤）",
+    "approve": "通过",
+    "reject": "驳回",
+    "syncMock": "同步模拟课表 API"
+  },
+  "dashboard": {
+    "welcome": "欢迎",
+    "cards": "快速入口"
+  },
+  "timeline": {
+    "plans": "个人计划（时间轴）",
+    "schedule": "课表（含模拟 API）",
+    "upcoming": "即将到期（7 天内）",
+    "addPlan": "新建计划",
+    "titleZh": "标题（中文）",
+    "titleEn": "Title (EN)",
+    "titleRu": "Заголовок (RU)"
+  },
+  "tasks": {
+    "list": "任务列表",
+    "overview": "全局任务看板",
+    "new": "新建任务",
+    "assignee": "执行人 ID（可选）",
+    "primaryOrg": "主责组织 ID",
+    "relatedOrgs": "关联组织 ID（逗号分隔）"
+  },
+  "orgs": {
+    "list": "组织列表",
+    "new": "新建组织（团委）",
+    "nameZh": "名称（中文）",
+    "typeZh": "类型（中文）"
+  },
+  "profile": {
+    "title": "档案中心",
+    "github": "GitHub",
+    "identity": "身份信息（中/英/俄）",
+    "awards": "荣誉奖项",
+    "tags": "能力标签",
+    "pending": "待审核档案",
+    "review": "审核"
+  },
+  "notifications": { "title": "通知中心", "markAll": "全部已读" }
+}

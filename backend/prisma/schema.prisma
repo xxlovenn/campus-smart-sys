@@ -1,0 +1,207 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  STUDENT
+  ORG_ADMIN
+  LEAGUE_ADMIN
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  DONE
+  BLOCKED
+}
+
+enum PlanSource {
+  PERSONAL
+  ORG_TASK
+}
+
+enum PlanPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum ProfileReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+model User {
+  id           String   @id @default(uuid())
+  email        String   @unique
+  passwordHash String
+  name         String
+  studentId    String?  @unique
+  phone        String?
+  role         UserRole @default(STUDENT)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  memberships       OrganizationMember[]
+  createdTasks      Task[]               @relation("TaskCreator")
+  assignedTasks     Task[]               @relation("TaskAssignee")
+  plans             PersonalPlan[]
+  scheduleEntries   ScheduleEntry[]
+  profile           Profile?
+  notifications     Notification[]
+}
+
+model Organization {
+  id        String   @id @default(uuid())
+  nameZh    String
+  nameEn    String
+  nameRu    String
+  typeZh    String
+  typeEn    String
+  typeRu    String
+  createdAt DateTime @default(now())
+
+  members      OrganizationMember[]
+  tasks        Task[]               @relation("TaskPrimaryOrg")
+  taskLinks    TaskOrganization[]
+}
+
+model OrganizationMember {
+  id             String   @id @default(uuid())
+  userId         String
+  organizationId String
+  roleZh         String   @default("成员")
+  roleEn         String   @default("Member")
+  roleRu         String   @default("Участник")
+  joinedAt       DateTime @default(now())
+
+  user         User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, organizationId])
+}
+
+model Task {
+  id          String     @id @default(uuid())
+  titleZh     String
+  titleEn     String
+  titleRu     String
+  descZh      String     @default("")
+  descEn      String     @default("")
+  descRu      String     @default("")
+  status      TaskStatus @default(TODO)
+  dueAt       DateTime?
+  creatorId   String
+  assigneeId  String?
+  primaryOrgId String?
+
+  creator      User               @relation("TaskCreator", fields: [creatorId], references: [id])
+  assignee     User?              @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  primaryOrg   Organization?      @relation("TaskPrimaryOrg", fields: [primaryOrgId], references: [id])
+  relatedOrgs   TaskOrganization[]
+  notifications Notification[]
+}
+
+model TaskOrganization {
+  taskId         String
+  organizationId String
+
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, organizationId])
+}
+
+model PersonalPlan {
+  id               String       @id @default(uuid())
+  userId           String
+  titleZh          String
+  titleEn          String
+  titleRu          String
+  priority         PlanPriority @default(MEDIUM)
+  source           PlanSource   @default(PERSONAL)
+  dueAt            DateTime?
+  syncedToTimeline Boolean      @default(true)
+  createdAt        DateTime     @default(now())
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model ScheduleEntry {
+  id         String @id @default(uuid())
+  userId     String
+  courseZh   String
+  courseEn   String
+  courseRu   String
+  weekday    Int
+  startTime  String
+  endTime    String
+  locationZh String @default("")
+  locationEn String @default("")
+  locationRu String @default("")
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Profile {
+  userId        String                @id
+  githubUrl     String?
+  identityZh    String                @default("")
+  identityEn    String                @default("")
+  identityRu    String                @default("")
+  reviewStatus  ProfileReviewStatus   @default(PENDING)
+  rejectReason  String?
+  updatedAt     DateTime              @updatedAt
+
+  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  awards Award[]
+  tags   SkillTag[]
+}
+
+model Award {
+  id          String   @id @default(uuid())
+  profileUserId String
+  titleZh     String
+  titleEn     String
+  titleRu     String
+  proofUrl    String?
+  awardedAt   DateTime @default(now())
+
+  profile Profile @relation(fields: [profileUserId], references: [userId], onDelete: Cascade)
+}
+
+model SkillTag {
+  id            String @id @default(uuid())
+  profileUserId String
+  categoryZh    String
+  categoryEn    String
+  categoryRu    String
+  nameZh        String
+  nameEn        String
+  nameRu        String
+
+  profile Profile @relation(fields: [profileUserId], references: [userId], onDelete: Cascade)
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  titleZh   String
+  titleEn   String
+  titleRu   String
+  bodyZh    String   @default("")
+  bodyEn    String   @default("")
+  bodyRu    String   @default("")
+  read      Boolean  @default(false)
+  taskId    String?
+  createdAt DateTime @default(now())
+
+  user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  task Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+}

@@ -1,0 +1,71 @@
+{
+  "app": {
+    "title": "Campus Integrated Smart Management System",
+    "subtitle": "League office · Student org OA · Personal timeline"
+  },
+  "nav": {
+    "dashboard": "Dashboard",
+    "timeline": "Timeline & timetable",
+    "tasks": "Org tasks",
+    "orgs": "Organizations",
+    "profile": "Profile",
+    "admin": "League admin",
+    "notifications": "Notifications",
+    "login": "Login"
+  },
+  "auth": {
+    "email": "Email",
+    "password": "Password",
+    "login": "Sign in",
+    "logout": "Sign out",
+    "hint": "Demo accounts are in README"
+  },
+  "common": {
+    "save": "Save",
+    "create": "Create",
+    "refresh": "Refresh",
+    "status": "Status",
+    "due": "Due",
+    "loading": "Loading…",
+    "error": "Error",
+    "language": "Language",
+    "search": "Search (client filter)",
+    "approve": "Approve",
+    "reject": "Reject",
+    "syncMock": "Sync mock timetable API"
+  },
+  "dashboard": { "welcome": "Welcome", "cards": "Shortcuts" },
+  "timeline": {
+    "plans": "Personal plans (timeline)",
+    "schedule": "Timetable (incl. mock API)",
+    "upcoming": "Upcoming (7 days)",
+    "addPlan": "New plan",
+    "titleZh": "Title (ZH)",
+    "titleEn": "Title (EN)",
+    "titleRu": "Title (RU)"
+  },
+  "tasks": {
+    "list": "Tasks",
+    "overview": "Global board",
+    "new": "New task",
+    "assignee": "Assignee user id (optional)",
+    "primaryOrg": "Primary org id",
+    "relatedOrgs": "Related org ids (comma-separated)"
+  },
+  "orgs": {
+    "list": "Organizations",
+    "new": "Create org (league)",
+    "nameZh": "Name (ZH)",
+    "typeZh": "Type (ZH)"
+  },
+  "profile": {
+    "title": "Profile center",
+    "github": "GitHub",
+    "identity": "Identity (ZH/EN/RU)",
+    "awards": "Awards",
+    "tags": "Skill tags",
+    "pending": "Pending reviews",
+    "review": "Review"
+  },
+  "notifications": { "title": "Notifications", "markAll": "Mark all read" }
+}

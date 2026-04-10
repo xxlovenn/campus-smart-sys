@@ -88,6 +88,8 @@ model OrganizationMember {
 }
 
 model Task {
+  startAt     DateTime?
+  endAt       DateTime?
   id          String     @id @default(uuid())
   titleZh     String
   titleEn     String
@@ -119,6 +121,8 @@ model TaskOrganization {
 }
 
 model PersonalPlan {
+  startAt          DateTime?
+  endAt            DateTime?
   id               String       @id @default(uuid())
   userId           String
   titleZh          String

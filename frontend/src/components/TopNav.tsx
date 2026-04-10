@@ -5,11 +5,17 @@ import { useEffect, useState } from 'react';
 import { Link, usePathname, useRouter } from '@/navigation';
 import { clearToken, getToken } from '@/lib/auth-storage';
 
+type NavItem = {
+  href: string;
+  label: string;
+};
+
 export function TopNav() {
   const t = useTranslations('nav');
   const ta = useTranslations('auth');
   const tapp = useTranslations('app');
   const tc = useTranslations('common');
+
   const locale = useLocale();
   const pathname = usePathname();
   const router = useRouter();
@@ -19,7 +25,17 @@ export function TopNav() {
     setTok(getToken());
   }, [pathname]);
 
-  const otherLocales = (['zh', 'en', 'ru'] as const).filter((l) => l !== locale);
+  const locales = ['zh', 'en', 'ru'] as const;
+
+  const navItems: NavItem[] = [
+    { href: '/dashboard', label: t('dashboard') },
+    { href: '/timeline', label: t('timeline') },
+    { href: '/tasks', label: t('tasks') },
+    { href: '/organizations', label: t('orgs') },
+    { href: '/profile', label: t('profile') },
+    { href: '/admin', label: t('admin') },
+    { href: '/notifications', label: t('notifications') },
+  ];
 
   function switchLocale(next: string) {
     router.replace(pathname, { locale: next });
@@ -31,46 +47,85 @@ export function TopNav() {
     router.replace('/', { locale });
   }
 
+  function isActive(href: string) {
+    if (href === '/dashboard') {
+      return pathname === '/dashboard';
+    }
+    return pathname.startsWith(href);
+  }
+
   return (
-    <header
-      style={{
-        borderBottom: '1px solid #e5e7eb',
-        padding: '12px 20px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: 16,
-        flexWrap: 'wrap',
-        background: '#fafafa',
-      }}
-    >
-      <Link href="/" style={{ fontWeight: 700 }}>
-        {tapp('title')}
-      </Link>
-      <span style={{ color: '#666' }}>
-        {tc('language')}: {locale.toUpperCase()}
-      </span>
-      {otherLocales.map((l) => (
-        <button key={l} type="button" onClick={() => switchLocale(l)} style={{ cursor: 'pointer' }}>
-          {l.toUpperCase()}
-        </button>
-      ))}
-      <span style={{ flex: 1 }} />
+    <aside className="sidebar">
+      <div>
+        <div className="sidebar-brand">{tapp('title')}</div>
+        <div className="sidebar-subtitle">{tapp('subtitle')}</div>
+      </div>
+
       {token ? (
         <>
-          <Link href="/dashboard">{t('dashboard')}</Link>
-          <Link href="/timeline">{t('timeline')}</Link>
-          <Link href="/tasks">{t('tasks')}</Link>
-          <Link href="/organizations">{t('orgs')}</Link>
-          <Link href="/profile">{t('profile')}</Link>
-          <Link href="/admin">{t('admin')}</Link>
-          <Link href="/notifications">{t('notifications')}</Link>
-          <button type="button" onClick={logout}>
-            {ta('logout')}
-          </button>
+          <nav className="sidebar-nav">
+            {navItems.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className={`sidebar-link ${isActive(item.href) ? 'active' : ''}`}
+              >
+                {item.label}
+              </Link>
+            ))}
+          </nav>
+
+          <div className="sidebar-footer">
+            <div style={{ marginBottom: 12 }}>
+              {tc('language')}: {locale.toUpperCase()}
+            </div>
+
+            <div className="locale-group" style={{ marginBottom: 16 }}>
+              {locales.map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => switchLocale(l)}
+                  className={`locale-btn ${locale === l ? 'active' : ''}`}
+                >
+                  {l.toUpperCase()}
+                </button>
+              ))}
+            </div>
+
+            <button type="button" onClick={logout} className="logout-btn">
+              {ta('logout')}
+            </button>
+          </div>
         </>
       ) : (
-        <Link href="/">{t('login')}</Link>
+        <>
+          <nav className="sidebar-nav">
+            <Link href="/" className="sidebar-link active">
+              {t('login')}
+            </Link>
+          </nav>
+
+          <div className="sidebar-footer">
+            <div style={{ marginBottom: 12 }}>
+              {tc('language')}: {locale.toUpperCase()}
+            </div>
+
+            <div className="locale-group">
+              {locales.map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => switchLocale(l)}
+                  className={`locale-btn ${locale === l ? 'active' : ''}`}
+                >
+                  {l.toUpperCase()}
+                </button>
+              ))}
+            </div>
+          </div>
+        </>
       )}
-    </header>
+    </aside>
   );
 }

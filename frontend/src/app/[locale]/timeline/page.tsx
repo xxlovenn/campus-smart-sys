@@ -12,11 +12,12 @@ export default function TimelinePage() {
   const tc = useTranslations('common');
   const locale = useLocale();
   const token = getToken();
+
   const [plans, setPlans] = useState<unknown[]>([]);
   const [schedule, setSchedule] = useState<unknown[]>([]);
   const [upcoming, setUpcoming] = useState<{ plans: unknown[]; tasks: unknown[] } | null>(null);
   const [q, setQ] = useState('');
-  const [titles, setTitles] = useState({ zh: '', en: '', ru: '' });
+  const [title, setTitle] = useState('');
   const [err, setErr] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -43,18 +44,20 @@ export default function TimelinePage() {
   async function addPlan(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
+
     await apiFetch('/plans', {
       method: 'POST',
       token,
       body: JSON.stringify({
-        titleZh: titles.zh,
-        titleEn: titles.en,
-        titleRu: titles.ru,
+        titleZh: title,
+        titleEn: title,
+        titleRu: title,
         dueAt: new Date(Date.now() + 86400000).toISOString(),
         syncedToTimeline: true,
       }),
     });
-    setTitles({ zh: '', en: '', ru: '' });
+
+    setTitle('');
     load();
   }
 
@@ -66,122 +69,190 @@ export default function TimelinePage() {
 
   const filter = useMemo(() => {
     const needle = q.trim().toLowerCase();
-    const match = (row: Record<string, unknown>) => {
-      if (!needle) return true;
-      const blob = JSON.stringify(row).toLowerCase();
-      return blob.includes(needle);
+    return {
+      match: (row: Record<string, unknown>) =>
+        !needle || JSON.stringify(row).toLowerCase().includes(needle),
     };
-    return { match };
   }, [q]);
 
   if (!token) {
     return (
-      <p>
+      <div className="page-card">
         <Link href="/">Login</Link>
-      </p>
+      </div>
     );
   }
 
   return (
-    <div style={{ display: 'grid', gap: 20 }}>
-      <h1>{t('plans')}</h1>
-      <input
-        placeholder={tc('search')}
-        value={q}
-        onChange={(e) => setQ(e.target.value)}
-        style={{ maxWidth: 420 }}
-      />
-      {err && <div style={{ color: 'crimson' }}>{err}</div>}
-      <button type="button" onClick={load}>
-        {tc('refresh')}
-      </button>
-      <button type="button" onClick={syncMock}>
-        {tc('syncMock')}
-      </button>
+    <div className="page-container">
+      <div className="page-card">
+        <h1 className="page-title">{t('plans')}</h1>
+        <p className="page-subtitle">
+          统一管理个人计划、模拟课表与即将到期提醒
+        </p>
 
-      <form onSubmit={addPlan} style={{ display: 'grid', gap: 8, maxWidth: 520 }}>
-        <h3>{t('addPlan')}</h3>
-        <input
-          placeholder={t('titleZh')}
-          value={titles.zh}
-          onChange={(e) => setTitles((s) => ({ ...s, zh: e.target.value }))}
-          required
-        />
-        <input
-          placeholder={t('titleEn')}
-          value={titles.en}
-          onChange={(e) => setTitles((s) => ({ ...s, en: e.target.value }))}
-          required
-        />
-        <input
-          placeholder={t('titleRu')}
-          value={titles.ru}
-          onChange={(e) => setTitles((s) => ({ ...s, ru: e.target.value }))}
-          required
-        />
-        <button type="submit">{tc('create')}</button>
-      </form>
-
-      <ul>
-        {plans
-          .filter((x) => filter.match(x as Record<string, unknown>))
-          .map((p) => {
-            const o = p as Record<string, unknown>;
-            return (
-              <li key={String(o.id)}>
-                {triField(o, 'title', locale)} · {o.dueAt ? String(o.dueAt) : '—'}
-              </li>
-            );
-          })}
-      </ul>
-
-      <h2>{t('schedule')}</h2>
-      <ul>
-        {schedule
-          .filter((x) => filter.match(x as Record<string, unknown>))
-          .map((s) => {
-            const o = s as Record<string, unknown>;
-            return (
-              <li key={String(o.id)}>
-                {triField(o, 'course', locale)} · {String(o.weekday)} · {String(o.startTime)}-
-                {String(o.endTime)} · {triField(o, 'location', locale)} ·{' '}
-                <em>{String(o.source ?? '')}</em>
-              </li>
-            );
-          })}
-      </ul>
-
-      <h2>{t('upcoming')}</h2>
-      {upcoming && (
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 16 }}>
-          <div>
-            <h4>Plans</h4>
-            <ul>
-              {upcoming.plans.map((p) => {
-                const o = p as Record<string, unknown>;
-                return (
-                  <li key={String(o.id)}>
-                    {triField(o, 'title', locale)} · {String(o.dueAt ?? '')}
-                  </li>
-                );
-              })}
-            </ul>
+        {err && (
+          <div
+            style={{
+              marginBottom: 16,
+              padding: '12px 14px',
+              borderRadius: 12,
+              background: '#fef2f2',
+              border: '1px solid #fecaca',
+              color: '#b91c1c',
+            }}
+          >
+            {err}
           </div>
-          <div>
-            <h4>Tasks</h4>
-            <ul>
-              {upcoming.tasks.map((p) => {
-                const o = p as Record<string, unknown>;
-                return (
-                  <li key={String(o.id)}>
-                    {triField(o, 'title', locale)} · {String(o.dueAt ?? '')}
-                  </li>
-                );
-              })}
-            </ul>
+        )}
+
+        {/* 顶部操作区 */}
+        <div className="page-section">
+          <div className="card-soft">
+            <h3 style={{ marginBottom: 14 }}>操作区</h3>
+            <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
+              <input
+                placeholder={tc('search')}
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                style={{ maxWidth: 320 }}
+              />
+              <button type="button" onClick={load}>
+                {tc('refresh')}
+              </button>
+              <button type="button" onClick={syncMock}>
+                {tc('syncMock')}
+              </button>
+            </div>
           </div>
         </div>
-      )}
+
+        {/* 新建计划 */}
+        <div className="page-section">
+          <div className="card-soft">
+            <h3 style={{ marginBottom: 14 }}>{t('addPlan')}</h3>
+            <p className="topbar-muted" style={{ marginBottom: 14 }}>
+              只需填写一次标题，系统会按当前方案同步到三语字段，方便演示与管理。
+            </p>
+
+            <form onSubmit={addPlan} style={{ display: 'grid', gap: 12, maxWidth: 560 }}>
+              <input
+                placeholder={t('titleZh')}
+                value={title}
+                onChange={(e) => setTitle(e.target.value)}
+                required
+              />
+              <button type="submit">{tc('create')}</button>
+            </form>
+          </div>
+        </div>
+
+        {/* 计划列表 */}
+        <div className="page-section">
+          <div className="card-soft">
+            <h2 style={{ marginBottom: 14 }}>Plans</h2>
+            {plans.filter((x) => filter.match(x as Record<string, unknown>)).length === 0 ? (
+              <div className="topbar-muted">暂无计划</div>
+            ) : (
+              <ul className="list-clean">
+                {plans
+                  .filter((x) => filter.match(x as Record<string, unknown>))
+                  .map((p) => {
+                    const o = p as Record<string, unknown>;
+                    return (
+                      <li key={String(o.id)} className="list-item">
+                        <strong>{triField(o, 'title', locale)}</strong>
+                        <div className="topbar-muted" style={{ marginTop: 6 }}>
+                          截止时间：{o.dueAt ? String(o.dueAt) : '—'}
+                        </div>
+                      </li>
+                    );
+                  })}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* 课表 */}
+        <div className="page-section">
+          <div className="card-soft">
+            <h2 style={{ marginBottom: 14 }}>{t('schedule')}</h2>
+            {schedule.filter((x) => filter.match(x as Record<string, unknown>)).length === 0 ? (
+              <div className="topbar-muted">暂无课表数据</div>
+            ) : (
+              <ul className="list-clean">
+                {schedule
+                  .filter((x) => filter.match(x as Record<string, unknown>))
+                  .map((s) => {
+                    const o = s as Record<string, unknown>;
+                    return (
+                      <li key={String(o.id)} className="list-item">
+                        <strong>{triField(o, 'course', locale)}</strong>
+                        <div className="topbar-muted" style={{ marginTop: 6 }}>
+                          星期 {String(o.weekday)} · {String(o.startTime)} - {String(o.endTime)}
+                        </div>
+                        <div className="topbar-muted" style={{ marginTop: 4 }}>
+                          地点：{triField(o, 'location', locale)} · 来源：{String(o.source ?? '')}
+                        </div>
+                      </li>
+                    );
+                  })}
+              </ul>
+            )}
+          </div>
+        </div>
+
+        {/* 即将到期 */}
+        <div className="page-section">
+          <h2 style={{ marginBottom: 14 }}>{t('upcoming')}</h2>
+
+          {upcoming && (
+            <div className="grid-two">
+              <div className="card-soft">
+                <h4 style={{ marginBottom: 12 }}>Plans</h4>
+                {upcoming.plans.length === 0 ? (
+                  <div className="topbar-muted">暂无即将到期计划</div>
+                ) : (
+                  <ul className="list-clean">
+                    {upcoming.plans.map((p) => {
+                      const o = p as Record<string, unknown>;
+                      return (
+                        <li key={String(o.id)} className="list-item">
+                          <strong>{triField(o, 'title', locale)}</strong>
+                          <div className="topbar-muted" style={{ marginTop: 6 }}>
+                            {String(o.dueAt ?? '')}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+
+              <div className="card-soft">
+                <h4 style={{ marginBottom: 12 }}>Tasks</h4>
+                {upcoming.tasks.length === 0 ? (
+                  <div className="topbar-muted">暂无即将到期任务</div>
+                ) : (
+                  <ul className="list-clean">
+                    {upcoming.tasks.map((p) => {
+                      const o = p as Record<string, unknown>;
+                      return (
+                        <li key={String(o.id)} className="list-item">
+                          <strong>{triField(o, 'title', locale)}</strong>
+                          <div className="topbar-muted" style={{ marginTop: 6 }}>
+                            {String(o.dueAt ?? '')}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   );
 }

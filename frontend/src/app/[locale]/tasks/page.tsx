@@ -10,18 +10,22 @@ import { triField } from '@/lib/tri';
 type Me = {
   id: string;
   role: string;
-  name?: string;
-  email?: string;
 };
 
 type Task = Record<string, unknown> & {
   id: string;
   status: string;
-  creator?: {
-    id?: string;
-    name?: string;
-    email?: string;
-  };
+};
+
+type Organization = Record<string, unknown> & {
+  id: string;
+};
+
+type UserOption = {
+  id: string;
+  name?: string;
+  email?: string;
+  role?: string;
 };
 
 function toLocalDateTimeValue(date: Date) {
@@ -34,7 +38,7 @@ function toLocalDateTimeValue(date: Date) {
   return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
 
-function formatDateTimeCN(value: unknown) {
+function formatDateTime(value: unknown) {
   if (!value) return '—';
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return String(value);
@@ -66,6 +70,8 @@ export default function TasksPage() {
 
   const [me, setMe] = useState<Me | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
+  const [orgs, setOrgs] = useState<Organization[]>([]);
+  const [users, setUsers] = useState<UserOption[]>([]);
   const [overview, setOverview] = useState<unknown | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
@@ -87,15 +93,31 @@ export default function TasksPage() {
   const nowMin = useMemo(() => toLocalDateTimeValue(new Date()), []);
 
   const load = useCallback(async () => {
-    if (!token) return;
+    if (!token) {
+      setErr('登录已失效，请重新登录');
+      setTasks([]);
+      setOverview(null);
+      setMe(null);
+      setOrgs([]);
+      setUsers([]);
+      return;
+    }
+
     setErr(null);
 
     try {
       const m = await apiFetch<Me>('/users/me', { token });
       setMe(m);
 
-      const list = await apiFetch<Task[]>('/tasks', { token });
-      setTasks(list);
+      const [taskList, orgList, userList] = await Promise.all([
+        apiFetch<Task[]>('/tasks', { token }),
+        apiFetch<Organization[]>('/organizations', { token }),
+        apiFetch<UserOption[]>('/users', { token }),
+      ]);
+
+      setTasks(Array.isArray(taskList) ? taskList : []);
+      setOrgs(Array.isArray(orgList) ? orgList : []);
+      setUsers(Array.isArray(userList) ? userList : []);
 
       if (m.role === 'LEAGUE_ADMIN') {
         const ov = await apiFetch<unknown>('/tasks/admin/overview', { token });
@@ -104,7 +126,12 @@ export default function TasksPage() {
         setOverview(null);
       }
     } catch (e) {
-      setErr(e instanceof Error ? e.message : tc('error'));
+      const msg = e instanceof Error ? e.message : tc('error');
+      setErr(msg);
+      setTasks([]);
+      setOverview(null);
+      setOrgs([]);
+      setUsers([]);
     }
   }, [token, tc]);
 
@@ -155,6 +182,11 @@ export default function TasksPage() {
       return;
     }
 
+    if (!form.primaryOrgId.trim()) {
+      setErr('请选择主组织');
+      return;
+    }
+
     if (new Date(form.startAt).getTime() < Date.now() - 60 * 1000) {
       setErr('开始时间不能早于当前时间');
       return;
@@ -178,7 +210,7 @@ export default function TasksPage() {
           titleZh: form.title,
           titleEn: form.title,
           titleRu: form.title,
-          primaryOrgId: form.primaryOrgId || undefined,
+          primaryOrgId: form.primaryOrgId,
           assigneeId: form.assigneeId || undefined,
           relatedOrgIds: related.length ? related : undefined,
           startAt: new Date(form.startAt).toISOString(),
@@ -206,7 +238,8 @@ export default function TasksPage() {
   if (!token) {
     return (
       <div className="page-card">
-        <Link href="/">Login</Link>
+        <p>登录已失效，请先重新登录。</p>
+        <Link href="/">返回登录页</Link>
       </div>
     );
   }
@@ -217,7 +250,7 @@ export default function TasksPage() {
     <div className="page-container">
       <div className="page-card">
         <h1 className="page-title">{t('list')}</h1>
-        <p className="page-subtitle">统一查看组织任务、设置开始结束时间，并按权限进行删除。</p>
+        <p className="page-subtitle">学生只能管理自己的任务，团委可全局查看与管理。</p>
 
         {err && (
           <div
@@ -247,35 +280,71 @@ export default function TasksPage() {
             <div className="card-soft">
               <h3 style={{ marginBottom: 14 }}>{t('new')}</h3>
               <p className="topbar-muted" style={{ marginBottom: 14 }}>
-                只填写一次标题。开始时间默认读取本地时间，结束时间不得早于开始时间。
+                标题只填写一次。主组织和执行人可直接选择。关联组织暂时保留文本输入。
               </p>
 
               <form onSubmit={createTask} style={{ display: 'grid', gap: 12, maxWidth: 620 }}>
                 <input
-                  placeholder={t('titleZh')}
+                  placeholder="任务标题"
                   value={form.title}
                   onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))}
                   required
                 />
 
-                <input
-                  placeholder={t('primaryOrg')}
-                  value={form.primaryOrgId}
-                  onChange={(e) => setForm((s) => ({ ...s, primaryOrgId: e.target.value }))}
-                  required
-                />
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span className="topbar-muted">主组织</span>
+                  <select
+                    value={form.primaryOrgId}
+                    onChange={(e) => setForm((s) => ({ ...s, primaryOrgId: e.target.value }))}
+                    required
+                  >
+                    <option value="">请选择主组织</option>
+                    {orgs.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {triField(org, 'name', locale)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-                <input
-                  placeholder={t('assignee')}
-                  value={form.assigneeId}
-                  onChange={(e) => setForm((s) => ({ ...s, assigneeId: e.target.value }))}
-                />
+                <label style={{ display: 'grid', gap: 6 }}>
+                  <span className="topbar-muted">执行人</span>
+                  <select
+                    value={form.assigneeId}
+                    onChange={(e) => setForm((s) => ({ ...s, assigneeId: e.target.value }))}
+                  >
+                    <option value="">暂不指定</option>
+                    {users.map((user) => (
+                      <option key={user.id} value={user.id}>
+                        {user.name || user.email || user.id}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
-                <input
-                  placeholder={t('relatedOrgs')}
-                  value={form.relatedOrgIds}
-                  onChange={(e) => setForm((s) => ({ ...s, relatedOrgIds: e.target.value }))}
-                />
+                <label>
+                  关联组织（多选）：
+                  <select
+                    multiple
+                    value={form.relatedOrgIds.split(',').filter(Boolean)}
+                    onChange={(e) => {
+                      const selected = Array.from(e.target.selectedOptions).map(
+                        (opt) => opt.value
+                      );
+                      setForm((s) => ({
+                        ...s,
+                        relatedOrgIds: selected.join(','),
+                      }));
+                    }}
+                    style={{ height: 120, width: '100%' }}
+                  >
+                    {orgs.map((org) => (
+                      <option key={org.id} value={org.id}>
+                        {triField(org, 'name', locale)}
+                      </option>
+                    ))}
+                  </select>
+                </label>
 
                 <label style={{ display: 'grid', gap: 6 }}>
                   <span className="topbar-muted">开始时间</span>
@@ -323,7 +392,8 @@ export default function TasksPage() {
             ) : (
               <ul className="list-clean">
                 {tasks.map((task) => {
-                  const canDelete = task.creator?.id === me?.id;
+                  const creator = task.creator as Record<string, unknown> | undefined;
+                  const canDelete = creator?.id === me?.id;
 
                   return (
                     <li key={task.id} className="list-item">
@@ -337,21 +407,28 @@ export default function TasksPage() {
                         }}
                       >
                         <div style={{ flex: 1, minWidth: 260 }}>
-                          <div style={{ display: 'flex', alignItems: 'center', gap: 10, flexWrap: 'wrap' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: 10,
+                              flexWrap: 'wrap',
+                            }}
+                          >
                             <strong>{triField(task, 'title', locale)}</strong>
                             <span className={statusBadgeClass(task.status)}>{task.status}</span>
                           </div>
 
                           <div className="topbar-muted" style={{ marginTop: 8 }}>
-                            开始：{formatDateTimeCN(task.startAt)}
+                            开始：{formatDateTime(task.startAt)}
                           </div>
 
                           <div className="topbar-muted" style={{ marginTop: 4 }}>
-                            结束：{formatDateTimeCN(task.endAt ?? task.dueAt)}
+                            结束：{formatDateTime(task.endAt ?? task.dueAt)}
                           </div>
 
                           <div className="topbar-muted" style={{ marginTop: 4 }}>
-                            创建者：{String(task.creator?.name ?? task.creator?.email ?? '—')}
+                            创建者：{String(creator?.name ?? creator?.email ?? '—')}
                           </div>
                         </div>
 

@@ -1,4 +1,9 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { TaskStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 
@@ -23,16 +28,20 @@ export class TasksService {
           assignee: { select: { id: true, name: true, email: true } },
           creator: { select: { id: true, name: true, email: true } },
         },
-        orderBy: { dueAt: 'asc' },
+        orderBy: [{ endAt: 'asc' }, { dueAt: 'asc' }],
       });
     }
+
     const orgIds = await this.memberOrgIds(userId);
-    if (role === UserRole.ORG_ADMIN && orgIds.length) {
+
+    if (role === UserRole.ORG_ADMIN) {
       return this.prisma.task.findMany({
         where: {
           OR: [
             { primaryOrgId: { in: orgIds } },
             { relatedOrgs: { some: { organizationId: { in: orgIds } } } },
+            { assigneeId: userId },
+            { creatorId: userId },
           ],
         },
         include: {
@@ -41,12 +50,13 @@ export class TasksService {
           assignee: { select: { id: true, name: true, email: true } },
           creator: { select: { id: true, name: true, email: true } },
         },
-        orderBy: { dueAt: 'asc' },
+        orderBy: [{ endAt: 'asc' }, { dueAt: 'asc' }],
       });
     }
+
     return this.prisma.task.findMany({
       where: {
-        OR: [{ assigneeId: userId }, { creatorId: userId }, { primaryOrgId: { in: orgIds } }],
+        OR: [{ assigneeId: userId }, { creatorId: userId }],
       },
       include: {
         primaryOrg: true,
@@ -54,7 +64,7 @@ export class TasksService {
         assignee: { select: { id: true, name: true, email: true } },
         creator: { select: { id: true, name: true, email: true } },
       },
-      orderBy: { dueAt: 'asc' },
+      orderBy: [{ endAt: 'asc' }, { dueAt: 'asc' }],
     });
   }
 
@@ -63,13 +73,16 @@ export class TasksService {
       by: ['status'],
       _count: { _all: true },
     });
+
     const tasks = await this.prisma.task.findMany({
       include: {
         primaryOrg: true,
         assignee: { select: { id: true, name: true, email: true } },
+        creator: { select: { id: true, name: true, email: true } },
       },
-      orderBy: { dueAt: 'asc' },
+      orderBy: [{ endAt: 'asc' }, { dueAt: 'asc' }],
     });
+
     return { grouped, tasks };
   }
 
@@ -83,6 +96,8 @@ export class TasksService {
       descZh?: string;
       descEn?: string;
       descRu?: string;
+      startAt?: string;
+      endAt?: string;
       dueAt?: string;
       assigneeId?: string;
       primaryOrgId?: string;
@@ -92,16 +107,36 @@ export class TasksService {
     if (role === UserRole.STUDENT) {
       throw new ForbiddenException('Students cannot create org tasks');
     }
+
     const orgIds = await this.memberOrgIds(userId);
+
     if (role === UserRole.ORG_ADMIN) {
       if (!dto.primaryOrgId || !orgIds.includes(dto.primaryOrgId)) {
         throw new ForbiddenException('Invalid primary organization');
       }
     }
+
     if (role === UserRole.LEAGUE_ADMIN && !dto.primaryOrgId) {
       throw new ForbiddenException('primaryOrgId is required');
     }
-    const dueAt = dto.dueAt ? new Date(dto.dueAt) : undefined;
+
+    const now = new Date();
+    const startAt = dto.startAt ? new Date(dto.startAt) : undefined;
+    const endAt = dto.endAt ? new Date(dto.endAt) : undefined;
+    const dueAt = dto.dueAt ? new Date(dto.dueAt) : endAt;
+
+    if (startAt && startAt.getTime() < now.getTime() - 60 * 1000) {
+      throw new BadRequestException('startAt cannot be earlier than now');
+    }
+
+    if (endAt && endAt.getTime() < now.getTime() - 60 * 1000) {
+      throw new BadRequestException('endAt cannot be earlier than now');
+    }
+
+    if (startAt && endAt && endAt.getTime() < startAt.getTime()) {
+      throw new BadRequestException('endAt cannot be earlier than startAt');
+    }
+
     const task = await this.prisma.task.create({
       data: {
         titleZh: dto.titleZh,
@@ -110,6 +145,8 @@ export class TasksService {
         descZh: dto.descZh ?? '',
         descEn: dto.descEn ?? '',
         descRu: dto.descRu ?? '',
+        startAt,
+        endAt,
         dueAt,
         creatorId: userId,
         assigneeId: dto.assigneeId,
@@ -126,8 +163,11 @@ export class TasksService {
       include: {
         primaryOrg: true,
         relatedOrgs: { include: { organization: true } },
+        assignee: { select: { id: true, name: true, email: true } },
+        creator: { select: { id: true, name: true, email: true } },
       },
     });
+
     if (dto.assigneeId) {
       await this.prisma.notification.create({
         data: {
@@ -142,26 +182,67 @@ export class TasksService {
         },
       });
     }
+
     return task;
   }
 
   async updateStatus(userId: string, role: UserRole, taskId: string, status: TaskStatus) {
     const task = await this.prisma.task.findUnique({ where: { id: taskId } });
     if (!task) throw new NotFoundException();
+
     if (role === UserRole.LEAGUE_ADMIN) {
       return this.prisma.task.update({ where: { id: taskId }, data: { status } });
     }
+
     const orgIds = await this.memberOrgIds(userId);
-    const inOrg =
-      (task.primaryOrgId && orgIds.includes(task.primaryOrgId)) ||
-      !!(await this.prisma.taskOrganization.findFirst({
-        where: { taskId, organizationId: { in: orgIds } },
-      }));
     const isAssignee = task.assigneeId === userId;
     const isCreator = task.creatorId === userId;
-    if (!inOrg && !isAssignee && !isCreator) {
-      throw new ForbiddenException();
+    const inPrimaryOrg = !!(task.primaryOrgId && orgIds.includes(task.primaryOrgId));
+    const inRelatedOrg = !!(await this.prisma.taskOrganization.findFirst({
+      where: { taskId, organizationId: { in: orgIds } },
+    }));
+
+    if (role === UserRole.ORG_ADMIN) {
+      if (!isAssignee && !isCreator && !inPrimaryOrg && !inRelatedOrg) {
+        throw new ForbiddenException('No permission to update this task');
+      }
+      return this.prisma.task.update({ where: { id: taskId }, data: { status } });
     }
+
+    if (!isAssignee && !isCreator) {
+      throw new ForbiddenException('Students can only manage their own tasks');
+    }
+
     return this.prisma.task.update({ where: { id: taskId }, data: { status } });
+  }
+
+  async remove(userId: string, role: UserRole, taskId: string) {
+    const task = await this.prisma.task.findUnique({
+      where: { id: taskId },
+    });
+
+    if (!task) {
+      throw new NotFoundException();
+    }
+
+    if (role === UserRole.STUDENT && task.creatorId !== userId) {
+      throw new ForbiddenException('Students can only delete tasks created by self');
+    }
+
+    if (role === UserRole.ORG_ADMIN && task.creatorId !== userId) {
+      throw new ForbiddenException('Org admin can only delete tasks created by self');
+    }
+
+    if (role === UserRole.LEAGUE_ADMIN && task.creatorId !== userId) {
+      throw new ForbiddenException('League admin can only delete tasks created by self');
+    }
+
+    await this.prisma.taskOrganization.deleteMany({
+      where: { taskId },
+    });
+
+    return this.prisma.task.delete({
+      where: { id: taskId },
+    });
   }
 }

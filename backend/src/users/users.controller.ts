@@ -7,6 +7,20 @@ export class UsersController {
   constructor(private prisma: PrismaService) {}
 
   @UseGuards(JwtAuthGuard)
+  @Get()
+  async list() {
+    return this.prisma.user.findMany({
+      select: {
+        id: true,
+        email: true,
+        name: true,
+        role: true,
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Get('me')
   async me(@Req() req: { user: { id: string } }) {
     return this.prisma.user.findUnique({

@@ -1,5 +1,22 @@
-import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
-import { IsArray, IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import {
+  IsArray,
+  IsEnum,
+  IsOptional,
+  IsString,
+  IsUUID,
+  MinLength,
+} from 'class-validator';
 import { TaskStatus, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -10,30 +27,47 @@ class CreateTaskDto {
   @IsString()
   @MinLength(1)
   titleZh!: string;
+
   @IsString()
   @MinLength(1)
   titleEn!: string;
+
   @IsString()
   @MinLength(1)
   titleRu!: string;
+
   @IsOptional()
   @IsString()
   descZh?: string;
+
   @IsOptional()
   @IsString()
   descEn?: string;
+
   @IsOptional()
   @IsString()
   descRu?: string;
+
+  @IsOptional()
+  @IsString()
+  startAt?: string;
+
+  @IsOptional()
+  @IsString()
+  endAt?: string;
+
   @IsOptional()
   @IsString()
   dueAt?: string;
+
   @IsOptional()
   @IsUUID()
   assigneeId?: string;
+
   @IsOptional()
   @IsUUID()
   primaryOrgId?: string;
+
   @IsOptional()
   @IsArray()
   @IsUUID('4', { each: true })
@@ -76,5 +110,11 @@ export class TasksController {
     @Body() body: UpdateStatusDto,
   ) {
     return this.tasks.updateStatus(req.user.id, req.user.role, id, body.status);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Delete(':id')
+  remove(@Req() req: { user: { id: string; role: UserRole } }, @Param('id') id: string) {
+    return this.tasks.remove(req.user.id, req.user.role, id);
   }
 }

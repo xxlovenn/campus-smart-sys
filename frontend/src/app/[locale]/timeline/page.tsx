@@ -1,18 +1,24 @@
 'use client';
 
-import { useLocale, useTranslations } from 'next-intl';
+import { useLocale } from 'next-intl';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth-storage';
 import { triField } from '@/lib/tri';
 
+type Me = {
+  id: string;
+  role: string;
+  name?: string;
+  email?: string;
+};
+
 export default function TimelinePage() {
-  const t = useTranslations('timeline');
-  const tc = useTranslations('common');
   const locale = useLocale();
   const token = getToken();
 
+  const [me, setMe] = useState<Me | null>(null);
   const [plans, setPlans] = useState<unknown[]>([]);
   const [schedule, setSchedule] = useState<unknown[]>([]);
   const [upcoming, setUpcoming] = useState<{ plans: unknown[]; tasks: unknown[] } | null>(null);
@@ -20,22 +26,62 @@ export default function TimelinePage() {
   const [title, setTitle] = useState('');
   const [err, setErr] = useState<string | null>(null);
 
+  const pageMeta = useMemo(() => {
+    if (me?.role === 'LEAGUE_ADMIN') {
+      return {
+        pageTitle: '日程表',
+        pageSubtitle: '统一管理团委日程、事务安排与近期提醒',
+        createTitle: '新建日程',
+        createHint: '只需填写一次标题，系统会同步到三语字段，方便展示与管理。',
+        sectionSchedule: '日程安排',
+        sectionUpcoming: '近期事项',
+        actionSync: '同步日程',
+      };
+    }
+
+    if (me?.role === 'ORG_ADMIN') {
+      return {
+        pageTitle: '日程表',
+        pageSubtitle: '统一管理组织安排、模拟课表与近期提醒',
+        createTitle: '新建日程',
+        createHint: '只需填写一次标题，系统会同步到三语字段，方便展示与管理。',
+        sectionSchedule: '日程安排',
+        sectionUpcoming: '即将到期（7天内）',
+        actionSync: '同步模拟课表 API',
+      };
+    }
+
+    return {
+      pageTitle: '日程表',
+      pageSubtitle: '统一管理个人计划、模拟课表与即将到期提醒',
+      createTitle: '新建计划',
+      createHint: '只需填写一次标题',
+      sectionSchedule: '课表（含模拟 API）',
+      sectionUpcoming: '即将到期（7天内）',
+      actionSync: '同步模拟课表 API',
+    };
+  }, [me?.role]);
+
   const load = useCallback(async () => {
     if (!token) return;
     setErr(null);
+
     try {
-      const [p, s, u] = await Promise.all([
+      const [m, p, s, u] = await Promise.all([
+        apiFetch<Me>('/users/me', { token }),
         apiFetch<unknown[]>('/plans/timeline', { token }),
         apiFetch<{ entries: unknown[] }>('/schedule', { token }),
         apiFetch<{ plans: unknown[]; tasks: unknown[] }>('/reminders/upcoming', { token }),
       ]);
+
+      setMe(m);
       setPlans(p);
       setSchedule(s.entries);
       setUpcoming(u);
     } catch (e) {
-      setErr(e instanceof Error ? e.message : tc('error'));
+      setErr(e instanceof Error ? e.message : '加载失败');
     }
-  }, [token, tc]);
+  }, [token]);
 
   useEffect(() => {
     load();
@@ -45,26 +91,34 @@ export default function TimelinePage() {
     e.preventDefault();
     if (!token) return;
 
-    await apiFetch('/plans', {
-      method: 'POST',
-      token,
-      body: JSON.stringify({
-        titleZh: title,
-        titleEn: title,
-        titleRu: title,
-        dueAt: new Date(Date.now() + 86400000).toISOString(),
-        syncedToTimeline: true,
-      }),
-    });
+    try {
+      await apiFetch('/plans', {
+        method: 'POST',
+        token,
+        body: JSON.stringify({
+          titleZh: title,
+          titleEn: title,
+          titleRu: title,
+          dueAt: new Date(Date.now() + 86400000).toISOString(),
+          syncedToTimeline: true,
+        }),
+      });
 
-    setTitle('');
-    load();
+      setTitle('');
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '创建失败');
+    }
   }
 
   async function syncMock() {
     if (!token) return;
-    await apiFetch('/schedule/sync-mock', { method: 'POST', token });
-    load();
+    try {
+      await apiFetch('/schedule/sync-mock', { method: 'POST', token });
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '同步失败');
+    }
   }
 
   const filter = useMemo(() => {
@@ -86,10 +140,8 @@ export default function TimelinePage() {
   return (
     <div className="page-container">
       <div className="page-card">
-        <h1 className="page-title">{t('plans')}</h1>
-        <p className="page-subtitle">
-          统一管理个人计划、模拟课表与即将到期提醒
-        </p>
+        <h1 className="page-title">{pageMeta.pageTitle}</h1>
+        <p className="page-subtitle">{pageMeta.pageSubtitle}</p>
 
         {err && (
           <div
@@ -106,48 +158,45 @@ export default function TimelinePage() {
           </div>
         )}
 
-        {/* 顶部操作区 */}
         <div className="page-section">
           <div className="card-soft">
             <h3 style={{ marginBottom: 14 }}>操作区</h3>
             <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
               <input
-                placeholder={tc('search')}
+                placeholder="搜索（前端过滤）"
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
                 style={{ maxWidth: 320 }}
               />
               <button type="button" onClick={load}>
-                {tc('refresh')}
+                刷新
               </button>
               <button type="button" onClick={syncMock}>
-                {tc('syncMock')}
+                {pageMeta.actionSync}
               </button>
             </div>
           </div>
         </div>
 
-        {/* 新建计划 */}
         <div className="page-section">
           <div className="card-soft">
-            <h3 style={{ marginBottom: 14 }}>{t('addPlan')}</h3>
+            <h3 style={{ marginBottom: 14 }}>{pageMeta.createTitle}</h3>
             <p className="topbar-muted" style={{ marginBottom: 14 }}>
-              只需填写一次标题，系统会按当前方案同步到三语字段，方便演示与管理。
+              {pageMeta.createHint}
             </p>
 
             <form onSubmit={addPlan} style={{ display: 'grid', gap: 12, maxWidth: 560 }}>
               <input
-                placeholder={t('titleZh')}
+                placeholder="标题（中文）"
                 value={title}
                 onChange={(e) => setTitle(e.target.value)}
                 required
               />
-              <button type="submit">{tc('create')}</button>
+              <button type="submit">创建</button>
             </form>
           </div>
         </div>
 
-        {/* 计划列表 */}
         <div className="page-section">
           <div className="card-soft">
             <h2 style={{ marginBottom: 14 }}>Plans</h2>
@@ -173,12 +222,11 @@ export default function TimelinePage() {
           </div>
         </div>
 
-        {/* 课表 */}
         <div className="page-section">
           <div className="card-soft">
-            <h2 style={{ marginBottom: 14 }}>{t('schedule')}</h2>
+            <h2 style={{ marginBottom: 14 }}>{pageMeta.sectionSchedule}</h2>
             {schedule.filter((x) => filter.match(x as Record<string, unknown>)).length === 0 ? (
-              <div className="topbar-muted">暂无课表数据</div>
+              <div className="topbar-muted">暂无数据</div>
             ) : (
               <ul className="list-clean">
                 {schedule
@@ -202,16 +250,15 @@ export default function TimelinePage() {
           </div>
         </div>
 
-        {/* 即将到期 */}
         <div className="page-section">
-          <h2 style={{ marginBottom: 14 }}>{t('upcoming')}</h2>
+          <h2 style={{ marginBottom: 14 }}>{pageMeta.sectionUpcoming}</h2>
 
           {upcoming && (
             <div className="grid-two">
               <div className="card-soft">
                 <h4 style={{ marginBottom: 12 }}>Plans</h4>
                 {upcoming.plans.length === 0 ? (
-                  <div className="topbar-muted">暂无即将到期计划</div>
+                  <div className="topbar-muted">暂无近期计划</div>
                 ) : (
                   <ul className="list-clean">
                     {upcoming.plans.map((p) => {
@@ -232,7 +279,7 @@ export default function TimelinePage() {
               <div className="card-soft">
                 <h4 style={{ marginBottom: 12 }}>Tasks</h4>
                 {upcoming.tasks.length === 0 ? (
-                  <div className="topbar-muted">暂无即将到期任务</div>
+                  <div className="topbar-muted">暂无近期任务</div>
                 ) : (
                   <ul className="list-clean">
                     {upcoming.tasks.map((p) => {

@@ -128,4 +128,11 @@ export class ProfileController {
   review(@Param('userId') userId: string, @Body() body: ReviewDto) {
     return this.profile.review(userId, body);
   }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Get('admin/user/:userId')
+  getUserProfile(@Param('userId') userId: string) {
+    return this.profile.getOrCreate(userId);
+  }
 }

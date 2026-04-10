@@ -1,41 +1,101 @@
 'use client';
 
-import { useLocale, useTranslations } from 'next-intl';
-import { useEffect, useState } from 'react';
+import { useLocale } from 'next-intl';
+import { useEffect, useMemo, useState } from 'react';
 import { Link, usePathname, useRouter } from '@/navigation';
+import { apiFetch } from '@/lib/api';
 import { clearToken, getToken } from '@/lib/auth-storage';
+
+type Me = {
+  id: string;
+  name?: string;
+  email?: string;
+  role?: string;
+};
 
 type NavItem = {
   href: string;
   label: string;
 };
 
-export function TopNav() {
-  const t = useTranslations('nav');
-  const ta = useTranslations('auth');
-  const tapp = useTranslations('app');
-  const tc = useTranslations('common');
+function roleText(role?: string) {
+  switch (role) {
+    case 'STUDENT':
+      return '学生端';
+    case 'ORG_ADMIN':
+      return '社团端';
+    case 'LEAGUE_ADMIN':
+      return '团委端';
+    default:
+      return '未登录';
+  }
+}
 
+export function TopNav() {
   const locale = useLocale();
   const pathname = usePathname();
   const router = useRouter();
+
   const [token, setTok] = useState<string | null>(null);
+  const [me, setMe] = useState<Me | null>(null);
 
   useEffect(() => {
-    setTok(getToken());
+    const t = getToken();
+    setTok(t);
+
+    async function loadMe(currentToken: string) {
+      try {
+        const user = await apiFetch<Me>('/users/me', { token: currentToken });
+        setMe(user);
+      } catch {
+        setMe(null);
+      }
+    }
+
+    if (t) {
+      loadMe(t);
+    } else {
+      setMe(null);
+    }
   }, [pathname]);
 
   const locales = ['zh', 'en', 'ru'] as const;
 
-  const navItems: NavItem[] = [
-    { href: '/dashboard', label: t('dashboard') },
-    { href: '/timeline', label: t('timeline') },
-    { href: '/tasks', label: t('tasks') },
-    { href: '/organizations', label: t('orgs') },
-    { href: '/profile', label: t('profile') },
-    { href: '/admin', label: t('admin') },
-    { href: '/notifications', label: t('notifications') },
-  ];
+  const navItems = useMemo<NavItem[]>(() => {
+    const role = me?.role;
+
+    if (role === 'ORG_ADMIN') {
+      return [
+        { href: '/dashboard', label: '工作台' },
+        { href: '/timeline', label: '日程表' },
+        { href: '/tasks', label: '社团活动' },
+        { href: '/organizations', label: '组织' },
+        { href: '/profile', label: '成员信息' },
+        { href: '/notifications', label: '通知' },
+      ];
+    }
+
+    if (role === 'LEAGUE_ADMIN') {
+      return [
+        { href: '/dashboard', label: '工作台' },
+        { href: '/timeline', label: '日程表' },
+        { href: '/tasks', label: '团委任务' },
+        { href: '/organizations', label: '组织管理' },
+        { href: '/profile', label: '学生档案' },
+        { href: '/notifications', label: '通知' },
+        { href: '/admin', label: '团委后台' },
+      ];
+    }
+
+    return [
+      { href: '/dashboard', label: '工作台' },
+      { href: '/timeline', label: '日程表' },
+      { href: '/tasks', label: '任务' },
+      { href: '/organizations', label: '组织' },
+      { href: '/profile', label: '个人档案' },
+      { href: '/notifications', label: '通知' },
+    ];
+  }, [me?.role]);
 
   function switchLocale(next: string) {
     router.replace(pathname, { locale: next });
@@ -44,6 +104,7 @@ export function TopNav() {
   function logout() {
     clearToken();
     setTok(null);
+    setMe(null);
     router.replace('/', { locale });
   }
 
@@ -54,11 +115,22 @@ export function TopNav() {
     return pathname.startsWith(href);
   }
 
+  const accountLine = token
+    ? `${me?.name || '未命名用户'} · ${me?.email || ''}`
+    : '请先登录';
+
+  const roleLine = token ? roleText(me?.role) : '未登录';
+
   return (
     <aside className="sidebar">
       <div>
-        <div className="sidebar-brand">{tapp('title')}</div>
-        <div className="sidebar-subtitle">{tapp('subtitle')}</div>
+        <div className="sidebar-brand">校园综合智慧管理系统</div>
+        <div className="sidebar-subtitle" style={{ marginTop: 8 }}>
+          {accountLine}
+        </div>
+        <div className="sidebar-subtitle">
+          {roleLine}
+        </div>
       </div>
 
       {token ? (
@@ -76,9 +148,7 @@ export function TopNav() {
           </nav>
 
           <div className="sidebar-footer">
-            <div style={{ marginBottom: 12 }}>
-              {tc('language')}: {locale.toUpperCase()}
-            </div>
+            <div style={{ marginBottom: 12 }}>语言: {locale.toUpperCase()}</div>
 
             <div className="locale-group" style={{ marginBottom: 16 }}>
               {locales.map((l) => (
@@ -94,7 +164,7 @@ export function TopNav() {
             </div>
 
             <button type="button" onClick={logout} className="logout-btn">
-              {ta('logout')}
+              退出登录
             </button>
           </div>
         </>
@@ -102,14 +172,12 @@ export function TopNav() {
         <>
           <nav className="sidebar-nav">
             <Link href="/" className="sidebar-link active">
-              {t('login')}
+              登录
             </Link>
           </nav>
 
           <div className="sidebar-footer">
-            <div style={{ marginBottom: 12 }}>
-              {tc('language')}: {locale.toUpperCase()}
-            </div>
+            <div style={{ marginBottom: 12 }}>语言: {locale.toUpperCase()}</div>
 
             <div className="locale-group">
               {locales.map((l) => (

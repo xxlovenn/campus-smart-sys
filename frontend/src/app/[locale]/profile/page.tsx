@@ -10,6 +10,9 @@ import { triField } from '@/lib/tri';
 type Profile = {
   userId: string;
   githubUrl?: string | null;
+  identityZh?: string;
+  identityEn?: string;
+  identityRu?: string;
   reviewStatus: string;
   rejectReason?: string | null;
   awards: Record<string, unknown>[];
@@ -42,6 +45,11 @@ export default function ProfilePage() {
       const prof = await apiFetch<Profile>('/profile/me', { token });
       setP(prof);
       setGithub(prof.githubUrl ?? '');
+      setIdentity({
+        zh: prof.identityZh ?? '',
+        en: prof.identityEn ?? '',
+        ru: prof.identityRu ?? '',
+      });
     } catch (e) {
       setErr(e instanceof Error ? e.message : tc('error'));
     }

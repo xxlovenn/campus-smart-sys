@@ -13,6 +13,7 @@ type Me = {
   name: string;
   role: string;
   studentId?: string | null;
+  managedOrgIds?: string[];
 };
 type OverviewStatusRow = {
   status?: string;
@@ -38,6 +39,8 @@ type DashboardTaskRow = {
   startAt?: string | null;
   endAt?: string | null;
   dueAt?: string | null;
+  primaryOrgId?: string | null;
+  relatedOrgs?: Array<{ organizationId?: string }>;
 };
 type ScheduleEntry = {
   id: string;
@@ -111,6 +114,8 @@ type StudentDeadlineRow = {
 
 type QuickKey = 'timeline' | 'tasks' | 'organizations' | 'profile' | 'notifications' | 'admin';
 type SidebarRole = 'student' | 'orgAdmin' | 'leagueAdmin';
+type OrgDeadlineWindow = 24 | 48 | 72;
+const ORG_DEADLINE_WINDOWS: OrgDeadlineWindow[] = [24, 48, 72];
 
 const ROLE_ORDER: Record<string, QuickKey[]> = {
   STUDENT: ['tasks', 'timeline', 'profile', 'organizations', 'notifications'],
@@ -248,6 +253,7 @@ export default function DashboardPage() {
   const [scheduleEntries, setScheduleEntries] = useState<ScheduleEntry[]>([]);
   const [upcomingReminders, setUpcomingReminders] = useState<UpcomingReminders | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
+  const [orgDeadlineWindow, setOrgDeadlineWindow] = useState<OrgDeadlineWindow>(72);
   const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
@@ -411,6 +417,7 @@ export default function DashboardPage() {
   const coreQuickKeys = useMemo(() => quickKeys.slice(0, 3), [quickKeys]);
   const extraQuickKeys = useMemo(() => quickKeys.slice(3), [quickKeys]);
   const isStudent = me?.role === 'STUDENT';
+  const isOrgAdmin = me?.role === 'ORG_ADMIN';
   const isLeagueAdmin = me?.role === 'LEAGUE_ADMIN';
   const metrics = useMemo(() => {
     if (me?.role === 'LEAGUE_ADMIN' && overview) {
@@ -637,6 +644,43 @@ export default function DashboardPage() {
         return t('studentHome.recommendations.reasons.default');
     }
   };
+  const orgWindowLabel = (hours: OrgDeadlineWindow) => {
+    if (hours === 24) return t('orgModule.windows.h24');
+    if (hours === 48) return t('orgModule.windows.h48');
+    return t('orgModule.windows.h72');
+  };
+  const orgTaskStats = useMemo(() => {
+    if (!isOrgAdmin) {
+      return { total: 0, done: 0, inProgress: 0, todo: 0, upcomingDeadline: 0, completionRate: 0 };
+    }
+    const managed = Array.isArray(me?.managedOrgIds) ? me.managedOrgIds : [];
+    const scoped = tasks.filter((task) => {
+      if (managed.length === 0) return true;
+      if (task.primaryOrgId && managed.includes(task.primaryOrgId)) return true;
+      return (task.relatedOrgs ?? []).some((row) => row.organizationId && managed.includes(row.organizationId));
+    });
+    const now = Date.now();
+    const horizon = now + orgDeadlineWindow * 60 * 60 * 1000;
+    const done = scoped.filter((task) => task.status === 'DONE').length;
+    const inProgress = scoped.filter((task) => task.status === 'IN_PROGRESS').length;
+    const todo = scoped.filter((task) => task.status === 'TODO' || task.status === 'BLOCKED').length;
+    const upcomingDeadline = scoped.filter((task) => {
+      if (task.status === 'DONE') return false;
+      const d = parseDateValue(task.endAt ?? task.dueAt ?? null);
+      if (!d) return false;
+      const ts = d.getTime();
+      return ts >= now && ts <= horizon;
+    }).length;
+    const completionRate = scoped.length > 0 ? Math.round((done / scoped.length) * 100) : 0;
+    return {
+      total: scoped.length,
+      done,
+      inProgress,
+      todo,
+      upcomingDeadline,
+      completionRate,
+    };
+  }, [isOrgAdmin, me?.managedOrgIds, orgDeadlineWindow, tasks]);
 
   const statCards = useMemo(() => {
     if (me?.role === 'LEAGUE_ADMIN') {
@@ -932,6 +976,77 @@ export default function DashboardPage() {
           </div>
         ) : null}
       </div>
+
+      {isOrgAdmin ? (
+        <div className="page-section">
+          <div className="card-soft">
+            <div className="dashboard-section-header">
+              <div>
+                <h2 style={{ marginBottom: 4 }}>{t('orgModule.title')}</h2>
+                <p className="topbar-muted" style={{ margin: 0 }}>
+                  {t('orgModule.hint')}
+                </p>
+              </div>
+              <div className="dashboard-chip-group">
+                {ORG_DEADLINE_WINDOWS.map((hour) => (
+                  <button
+                    key={hour}
+                    type="button"
+                    onClick={() => setOrgDeadlineWindow(hour)}
+                    className={`dashboard-chip ${orgDeadlineWindow === hour ? 'dashboard-chip-active' : ''}`}
+                  >
+                    {orgWindowLabel(hour)}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="dashboard-stats-grid">
+              <div className="dashboard-stat-card">
+                <div className="topbar-muted">{t('orgModule.cards.total')}</div>
+                <strong className="dashboard-stat-value">{orgTaskStats.total}</strong>
+              </div>
+              <div className="dashboard-stat-card">
+                <div className="topbar-muted">{t('orgModule.cards.done')}</div>
+                <strong className="dashboard-stat-value">{orgTaskStats.done}</strong>
+              </div>
+              <div className="dashboard-stat-card">
+                <div className="topbar-muted">{t('orgModule.cards.inProgress')}</div>
+                <strong className="dashboard-stat-value">{orgTaskStats.inProgress}</strong>
+              </div>
+              <div className="dashboard-stat-card">
+                <div className="topbar-muted">{t('orgModule.cards.todo')}</div>
+                <strong className="dashboard-stat-value">{orgTaskStats.todo}</strong>
+              </div>
+            </div>
+            <div className="dashboard-org-progress">
+              <div className="dashboard-org-progress-head">
+                <strong>{t('orgModule.completionRate')}</strong>
+                <strong>{orgTaskStats.completionRate}%</strong>
+              </div>
+              <div className="dashboard-viz-bar">
+                <div
+                  className="dashboard-viz-segment dashboard-viz-segment-green"
+                  style={{ width: segmentPercent(orgTaskStats.done, Math.max(1, orgTaskStats.total)) }}
+                />
+                <div
+                  className="dashboard-viz-segment dashboard-viz-segment-indigo"
+                  style={{ width: segmentPercent(orgTaskStats.inProgress, Math.max(1, orgTaskStats.total)) }}
+                />
+                <div
+                  className="dashboard-viz-segment dashboard-viz-segment-blue"
+                  style={{ width: segmentPercent(orgTaskStats.todo, Math.max(1, orgTaskStats.total)) }}
+                />
+              </div>
+            </div>
+            <div className="dashboard-empty-card" style={{ marginTop: 12 }}>
+              <strong>{t('orgModule.cards.upcomingDeadline')}</strong>
+              <p className="topbar-muted" style={{ marginBottom: 0, marginTop: 6 }}>
+                {t('orgModule.upcomingHint', { count: orgTaskStats.upcomingDeadline, hours: orgDeadlineWindow })}
+              </p>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       <div className="page-section">
         <div className="card-soft">

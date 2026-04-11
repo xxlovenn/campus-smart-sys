@@ -149,6 +149,24 @@
         "total": "全局任务总数"
       }
     },
+    "orgModule": {
+      "title": "本组织任务统计",
+      "hint": "基于现有任务表实时汇总当前组织执行情况。",
+      "completionRate": "任务完成率",
+      "windows": {
+        "h24": "24小时",
+        "h48": "48小时",
+        "h72": "72小时"
+      },
+      "cards": {
+        "total": "当前组织任务总数",
+        "done": "已完成",
+        "inProgress": "进行中",
+        "todo": "待处理",
+        "upcomingDeadline": "即将截止任务数"
+      },
+      "upcomingHint": "未来 {hours} 小时内有 {count} 个任务即将截止。"
+    },
     "quickPrimary": "核心入口",
     "quickExtraHint": "其余入口已保留在下方，便于完整演示。",
     "roleSummary": {

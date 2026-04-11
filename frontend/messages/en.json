@@ -152,6 +152,24 @@
         "total": "Global tasks"
       }
     },
+    "orgModule": {
+      "title": "Organization Task Snapshot",
+      "hint": "Live summary based on existing task records for your organization scope.",
+      "completionRate": "Completion rate",
+      "windows": {
+        "h24": "24h",
+        "h48": "48h",
+        "h72": "72h"
+      },
+      "cards": {
+        "total": "Total organization tasks",
+        "done": "Completed",
+        "inProgress": "In progress",
+        "todo": "To-do",
+        "upcomingDeadline": "Upcoming deadlines"
+      },
+      "upcomingHint": "{count} tasks are due in the next {hours} hours."
+    },
     "quickPrimary": "Primary entry",
     "quickExtraHint": "Additional entries remain below for full showcase coverage.",
     "roleSummary": {

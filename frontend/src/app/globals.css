@@ -421,6 +421,41 @@
     color: var(--text);
   }
 
+.dashboard-chip-group {
+  display: inline-flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.dashboard-chip {
+  border: 1px solid var(--border);
+  background: #fff;
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.dashboard-chip-active {
+  border-color: rgba(5, 150, 105, 0.35);
+  color: #047857;
+  background: rgba(16, 185, 129, 0.1);
+}
+
+.dashboard-org-progress {
+  margin-top: 12px;
+  display: grid;
+  gap: 8px;
+}
+
+.dashboard-org-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 13px;
+}
+
   .dashboard-state {
     text-align: center;
     padding-top: 30px;

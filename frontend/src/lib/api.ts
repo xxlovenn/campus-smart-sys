@@ -1,8 +1,11 @@
 export function getApiBase(): string {
-  if (typeof window !== 'undefined') {
-    return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
-  }
-  return process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3001/api';
+  return process.env.NEXT_PUBLIC_API_URL || '/api';
+}
+
+function joinUrl(base: string, path: string) {
+  const normalizedBase = base.endsWith('/') ? base.slice(0, -1) : base;
+  const normalizedPath = path.startsWith('/') ? path : `/${path}`;
+  return `${normalizedBase}${normalizedPath}`;
 }
 
 export async function apiFetch<T = unknown>(
@@ -15,7 +18,7 @@ export async function apiFetch<T = unknown>(
   }
   if (opts.token) headers.set('Authorization', `Bearer ${opts.token}`);
   const { token, ...rest } = opts;
-  const res = await fetch(`${getApiBase()}${path}`, { ...rest, headers });
+  const res = await fetch(joinUrl(getApiBase(), path), { ...rest, headers });
   const text = await res.text();
   if (!res.ok) {
     throw new Error(text || res.statusText);

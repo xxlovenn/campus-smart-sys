@@ -29,9 +29,9 @@ docker compose up -d --build
 访问：
 
 - 前端：<http://localhost:3000>（自动进入默认语言路由，例如 `/zh`）
-- 后端 API：<http://localhost:3001/api>
+- 后端 API（可直连调试）：<http://localhost:3001/api>
 
-> 前端浏览器调用 API 使用 `NEXT_PUBLIC_API_URL`（默认 `http://localhost:3001/api`）。若部署在非本机，请改为可访问的后端地址后重新构建前端镜像。
+> 前端统一使用相对路径 `/api`，并通过 Next.js rewrites 转发到 `backend:3001/api`。默认无需再手动改前端 API 地址。
 
 ## 默认演示账号（种子数据）
 
@@ -66,7 +66,7 @@ docker compose up -d --build
 
 - **端口占用**：修改 `docker-compose.yml` 中 `3000` / `3001` / `5432` 映射。
 - **JWT / 数据库连接失败**：确认根目录 `.env` 与容器内 `DATABASE_URL` 一致；重新 `docker compose up -d --build`。
-- **Windows 防火墙**：首次访问若浏览器无法连 `localhost:3001`，放行端口或改用本机 IP。
+- **Windows 防火墙**：优先访问前端 `localhost:3000`，前端会同源转发 `/api` 到后端；若直接调试后端端口，再放行 `3001`。
 
 ## 将代码推送到你的 GitHub（新建公开库）
 

@@ -101,6 +101,15 @@ class AdminUpdateUserProfileDto {
   phone?: string;
   @IsOptional()
   @IsString()
+  grade?: string;
+  @IsOptional()
+  @IsString()
+  major?: string;
+  @IsOptional()
+  @IsString()
+  className?: string;
+  @IsOptional()
+  @IsString()
   githubUrl?: string;
   @IsOptional()
   @IsString()
@@ -111,6 +120,12 @@ class AdminUpdateUserProfileDto {
   @IsOptional()
   @IsString()
   identityRu?: string;
+}
+
+class CreateMetaOptionDto {
+  @IsString()
+  @MinLength(1)
+  name!: string;
 }
 
 @Controller('profile')
@@ -193,5 +208,26 @@ export class ProfileController {
     @Body() body: AdminUpdateUserProfileDto,
   ) {
     return this.profile.adminUpdateUserProfile(userId, body);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Get('admin/options')
+  options() {
+    return this.profile.listMetaOptions();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Post('admin/options/grades')
+  addGrade(@Body() body: CreateMetaOptionDto) {
+    return this.profile.addGrade(body.name);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Post('admin/options/majors')
+  addMajor(@Body() body: CreateMetaOptionDto) {
+    return this.profile.addMajor(body.name);
   }
 }

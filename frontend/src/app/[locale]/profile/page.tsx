@@ -46,6 +46,9 @@ type AdminStudentRow = {
   studentId?: string | null;
   idCardMasked?: string | null;
   phone?: string | null;
+  grade?: string | null;
+  major?: string | null;
+  className?: string | null;
   reviewStatus: string;
 };
 
@@ -57,6 +60,9 @@ type AdminStudentDetail = {
     studentId?: string | null;
     idCard?: string | null;
     phone?: string | null;
+    grade?: string | null;
+    major?: string | null;
+    className?: string | null;
   };
   profile: Profile;
 };
@@ -87,6 +93,9 @@ export default function ProfilePage() {
     studentId: '',
     idCard: '',
     phone: '',
+    grade: '',
+    major: '',
+    className: '',
     githubUrl: '',
     identityZh: '',
     identityEn: '',
@@ -210,6 +219,9 @@ export default function ProfilePage() {
         studentId: detail.user.studentId ?? '',
         idCard: detail.user.idCard ?? '',
         phone: detail.user.phone ?? '',
+        grade: detail.user.grade ?? '',
+        major: detail.user.major ?? '',
+        className: detail.user.className ?? '',
         githubUrl: detail.profile.githubUrl ?? '',
         identityZh: detail.profile.identityZh ?? '',
         identityEn: detail.profile.identityEn ?? '',
@@ -467,7 +479,8 @@ export default function ProfilePage() {
                       }}
                     >
                       <div>
-                        <strong>{row.name}</strong> · {row.studentId || '—'} · {row.idCardMasked || '—'}
+                        <strong>{row.name}</strong> · {row.studentId || '—'} · {row.idCardMasked || '—'} ·
+                        {row.grade || '—'}级/{row.major || '—'}/{row.className || '—'}
                       </div>
                       <button type="button" onClick={() => openStudentDetail(row.id)}>
                         查看并修改
@@ -521,6 +534,29 @@ export default function ProfilePage() {
                 />
               </label>
             </div>
+            <div className="grid-two">
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span className="topbar-muted">年级</span>
+                <input
+                  value={adminEdit.grade}
+                  onChange={(e) => setAdminEdit((s) => ({ ...s, grade: e.target.value }))}
+                />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span className="topbar-muted">专业</span>
+                <input
+                  value={adminEdit.major}
+                  onChange={(e) => setAdminEdit((s) => ({ ...s, major: e.target.value }))}
+                />
+              </label>
+            </div>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">班级</span>
+              <input
+                value={adminEdit.className}
+                onChange={(e) => setAdminEdit((s) => ({ ...s, className: e.target.value }))}
+              />
+            </label>
             <label style={{ display: 'grid', gap: 6 }}>
               <span className="topbar-muted">GitHub</span>
               <input

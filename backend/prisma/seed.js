@@ -12,13 +12,122 @@ const bcrypt = require('bcrypt');
 const { randomUUID } = require('crypto');
 
 const prisma = new PrismaClient();
+const PRESET_GRADES = ['2020', '2021', '2022', '2023', '2024', '2025'];
+const PRESET_MAJORS = [
+  '计算机科学与技术',
+  '软件工程',
+  '数据科学与大数据技术',
+  '人工智能',
+  '网络工程',
+  '信息安全',
+  '电子信息工程',
+  '通信工程',
+  '自动化',
+  '机械工程',
+  '土木工程',
+  '工商管理',
+  '市场营销',
+  '会计学',
+  '金融学',
+  '经济学',
+  '法学',
+  '英语',
+  '俄语',
+  '汉语言文学',
+];
+
+const COMMON_CLUBS = [
+  {
+    nameZh: '计算机协会',
+    nameEn: 'Computer Association',
+    nameRu: 'Компьютерная ассоциация',
+    typeZh: '学术科技类',
+    typeEn: 'Academic & Tech',
+    typeRu: 'Академический и технический',
+    descriptionZh: '开展编程学习、技术分享与竞赛组织。',
+    descriptionEn: 'Coding study, tech sharing, and contest organization.',
+    descriptionRu: 'Изучение программирования, обмен опытом и организация конкурсов.',
+    account: 'club.cs@campus.demo',
+    password: 'ClubCS2026!',
+  },
+  {
+    nameZh: '人工智能社',
+    nameEn: 'AI Club',
+    nameRu: 'Клуб ИИ',
+    typeZh: '学术科技类',
+    typeEn: 'Academic & Tech',
+    typeRu: 'Академический и технический',
+    descriptionZh: '组织机器学习实践、模型应用与项目路演。',
+    descriptionEn: 'ML practice, model application, and project demos.',
+    descriptionRu: 'Практика ML, применение моделей и проектные демонстрации.',
+    account: 'club.ai@campus.demo',
+    password: 'ClubAI2026!',
+  },
+  {
+    nameZh: '青年志愿者协会',
+    nameEn: 'Youth Volunteers Association',
+    nameRu: 'Ассоциация волонтеров',
+    typeZh: '公益服务类',
+    typeEn: 'Public Service',
+    typeRu: 'Общественная служба',
+    descriptionZh: '开展校内外志愿服务、公益活动与社区协作。',
+    descriptionEn: 'Volunteer service, public welfare, and community cooperation.',
+    descriptionRu: 'Волонтерская деятельность, благотворительность и сотрудничество с сообществом.',
+    account: 'club.volunteer@campus.demo',
+    password: 'ClubVOL2026!',
+  },
+  {
+    nameZh: '创新创业协会',
+    nameEn: 'Innovation & Entrepreneurship Club',
+    nameRu: 'Клуб инноваций и предпринимательства',
+    typeZh: '创新实践类',
+    typeEn: 'Innovation Practice',
+    typeRu: 'Инновационная практика',
+    descriptionZh: '聚焦项目孵化、商业策划与创业训练。',
+    descriptionEn: 'Project incubation, business planning, and startup training.',
+    descriptionRu: 'Инкубация проектов, бизнес-планирование и стартап-подготовка.',
+    account: 'club.ie@campus.demo',
+    password: 'ClubIE2026!',
+  },
+  {
+    nameZh: '体育竞技协会',
+    nameEn: 'Sports Association',
+    nameRu: 'Спортивная ассоциация',
+    typeZh: '文体活动类',
+    typeEn: 'Sports & Culture',
+    typeRu: 'Спорт и культура',
+    descriptionZh: '组织球类赛事、体能训练与校际交流。',
+    descriptionEn: 'Ball games, fitness training, and inter-school exchange.',
+    descriptionRu: 'Турниры, тренировки и межвузовское взаимодействие.',
+    account: 'club.sports@campus.demo',
+    password: 'ClubSP2026!',
+  },
+  {
+    nameZh: '音乐与艺术社',
+    nameEn: 'Music and Arts Club',
+    nameRu: 'Музыкально-художественный клуб',
+    typeZh: '文艺活动类',
+    typeEn: 'Arts & Culture',
+    typeRu: 'Искусство и культура',
+    descriptionZh: '开展乐队排练、舞台演出与艺术展览。',
+    descriptionEn: 'Band rehearsal, stage performance, and art exhibitions.',
+    descriptionRu: 'Репетиции, выступления и художественные выставки.',
+    account: 'club.arts@campus.demo',
+    password: 'ClubART2026!',
+  },
+];
 
 async function main() {
   const password = await bcrypt.hash('demo123456', 10);
 
   const league = await prisma.user.upsert({
     where: { email: 'league@campus.demo' },
-    update: { idCard: '110101198001011234' },
+    update: {
+      idCard: '110101198001011234',
+      grade: '2022',
+      major: '学生事务管理',
+      className: '团委管理班',
+    },
     create: {
       id: randomUUID(),
       email: 'league@campus.demo',
@@ -27,13 +136,22 @@ async function main() {
       studentId: 'ADMIN001',
       phone: '13800000001',
       idCard: '110101198001011234',
+      grade: '2022',
+      major: '学生事务管理',
+      className: '团委管理班',
       role: UserRole.LEAGUE_ADMIN,
     },
   });
 
   const orgAdmin = await prisma.user.upsert({
     where: { email: 'org@campus.demo' },
-    update: { role: UserRole.STUDENT, idCard: '110101199501011111' },
+    update: {
+      role: UserRole.STUDENT,
+      idCard: '110101199501011111',
+      grade: '2023',
+      major: '计算机科学',
+      className: '计科1班',
+    },
     create: {
       id: randomUUID(),
       email: 'org@campus.demo',
@@ -42,13 +160,21 @@ async function main() {
       studentId: 'ORG001',
       phone: '13800000002',
       idCard: '110101199501011111',
+      grade: '2023',
+      major: '计算机科学',
+      className: '计科1班',
       role: UserRole.STUDENT,
     },
   });
 
   const student = await prisma.user.upsert({
     where: { email: 'student@campus.demo' },
-    update: { idCard: '110101200601011234' },
+    update: {
+      idCard: '110101200601011234',
+      grade: '2023',
+      major: '计算机科学',
+      className: '计科1班',
+    },
     create: {
       id: randomUUID(),
       email: 'student@campus.demo',
@@ -57,6 +183,30 @@ async function main() {
       studentId: '20260001',
       phone: '13800000003',
       idCard: '110101200601011234',
+      grade: '2023',
+      major: '计算机科学',
+      className: '计科1班',
+      role: UserRole.STUDENT,
+    },
+  });
+
+  const studentUnionAccount = 'club.union@campus.demo';
+  const studentUnionPassword = 'ClubUNION2026!';
+  const studentUnionPasswordHash = await bcrypt.hash(studentUnionPassword, 10);
+  const studentUnionAdmin = await prisma.user.upsert({
+    where: { email: studentUnionAccount },
+    update: {
+      name: '学生会组织账号',
+      passwordHash: studentUnionPasswordHash,
+      isOrgAccount: true,
+      role: UserRole.STUDENT,
+    },
+    create: {
+      id: randomUUID(),
+      email: studentUnionAccount,
+      passwordHash: studentUnionPasswordHash,
+      name: '学生会组织账号',
+      isOrgAccount: true,
       role: UserRole.STUDENT,
     },
   });
@@ -91,6 +241,9 @@ async function main() {
       descriptionEn: 'Coordinates student affairs on campus',
       descriptionRu: 'Координация студенческих дел',
       leaderUserId: league.id,
+      adminUserId: studentUnionAdmin.id,
+      adminAccount: studentUnionAccount,
+      adminPassword: studentUnionPassword,
     },
     create: {
       id: '00000000-0000-4000-8000-000000000002',
@@ -104,6 +257,9 @@ async function main() {
       typeEn: 'Student union',
       typeRu: 'Студсовет',
       leaderUserId: league.id,
+      adminUserId: studentUnionAdmin.id,
+      adminAccount: studentUnionAccount,
+      adminPassword: studentUnionPassword,
     },
   });
 
@@ -125,6 +281,27 @@ async function main() {
       roleZh: '会长',
       roleEn: 'President',
       roleRu: 'Председатель',
+    },
+  });
+
+  await prisma.organizationMember.upsert({
+    where: {
+      userId_organizationId: { userId: studentUnionAdmin.id, organizationId: org2.id },
+    },
+    update: {
+      memberRole: OrganizationMemberRole.ORG_ADMIN,
+      roleZh: '系统组织账号',
+      roleEn: 'System org account',
+      roleRu: 'Системная учетная запись',
+    },
+    create: {
+      id: randomUUID(),
+      userId: studentUnionAdmin.id,
+      organizationId: org2.id,
+      memberRole: OrganizationMemberRole.ORG_ADMIN,
+      roleZh: '系统组织账号',
+      roleEn: 'System org account',
+      roleRu: 'Системная учетная запись',
     },
   });
 
@@ -258,6 +435,103 @@ async function main() {
       },
     ],
   });
+
+  for (const name of PRESET_GRADES) {
+    await prisma.gradeOption.upsert({
+      where: { name },
+      update: {},
+      create: { id: randomUUID(), name },
+    });
+  }
+  for (const name of PRESET_MAJORS) {
+    await prisma.majorOption.upsert({
+      where: { name },
+      update: {},
+      create: { id: randomUUID(), name },
+    });
+  }
+
+  for (const club of COMMON_CLUBS) {
+    const passwordHash = await bcrypt.hash(club.password, 10);
+    const adminUser = await prisma.user.upsert({
+      where: { email: club.account },
+      update: {
+        name: `${club.nameZh}组织账号`,
+        passwordHash,
+        isOrgAccount: true,
+        role: UserRole.STUDENT,
+      },
+      create: {
+        id: randomUUID(),
+        email: club.account,
+        passwordHash,
+        name: `${club.nameZh}组织账号`,
+        isOrgAccount: true,
+        role: UserRole.STUDENT,
+      },
+    });
+
+    const existingOrg = await prisma.organization.findFirst({
+      where: { nameZh: club.nameZh },
+      select: { id: true },
+    });
+
+    const org = existingOrg
+      ? await prisma.organization.update({
+          where: { id: existingOrg.id },
+          data: {
+            nameEn: club.nameEn,
+            nameRu: club.nameRu,
+            typeZh: club.typeZh,
+            typeEn: club.typeEn,
+            typeRu: club.typeRu,
+            descriptionZh: club.descriptionZh,
+            descriptionEn: club.descriptionEn,
+            descriptionRu: club.descriptionRu,
+            adminUserId: adminUser.id,
+            adminAccount: club.account,
+            adminPassword: club.password,
+          },
+        })
+      : await prisma.organization.create({
+          data: {
+            id: randomUUID(),
+            nameZh: club.nameZh,
+            nameEn: club.nameEn,
+            nameRu: club.nameRu,
+            typeZh: club.typeZh,
+            typeEn: club.typeEn,
+            typeRu: club.typeRu,
+            descriptionZh: club.descriptionZh,
+            descriptionEn: club.descriptionEn,
+            descriptionRu: club.descriptionRu,
+            adminUserId: adminUser.id,
+            adminAccount: club.account,
+            adminPassword: club.password,
+          },
+        });
+
+    await prisma.organizationMember.upsert({
+      where: {
+        userId_organizationId: { userId: adminUser.id, organizationId: org.id },
+      },
+      update: {
+        memberRole: OrganizationMemberRole.ORG_ADMIN,
+        roleZh: '系统组织账号',
+        roleEn: 'System org account',
+        roleRu: 'Системная учетная запись',
+      },
+      create: {
+        id: randomUUID(),
+        userId: adminUser.id,
+        organizationId: org.id,
+        memberRole: OrganizationMemberRole.ORG_ADMIN,
+        roleZh: '系统组织账号',
+        roleEn: 'System org account',
+        roleRu: 'Системная учетная запись',
+      },
+    });
+  }
 
   console.log('Seed completed. Demo passwords: demo123456');
 }

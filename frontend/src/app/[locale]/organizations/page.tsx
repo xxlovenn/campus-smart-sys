@@ -21,6 +21,8 @@ type Org = {
   descriptionEn?: string;
   descriptionRu?: string;
   leader?: { id: string; name?: string; email?: string; studentId?: string | null } | null;
+  adminAccount?: string | null;
+  adminPassword?: string | null;
   _count?: { members: number };
 };
 type Me = { role: string; managedOrgIds?: string[] };
@@ -44,11 +46,18 @@ type OrgDetail = {
   descriptionEn?: string;
   descriptionRu?: string;
   leader?: { id: string; name?: string; email?: string; studentId?: string | null } | null;
+  adminAccount?: string | null;
+  adminPassword?: string | null;
   members: Array<{
     userId: string;
     roleZh: string;
     user: { id: string; name: string; email: string; studentId?: string | null };
   }>;
+};
+type CreatedCredential = {
+  orgName: string;
+  account: string;
+  password: string;
 };
 
 export default function OrgsPage() {
@@ -85,6 +94,8 @@ export default function OrgsPage() {
   const [memberKeyword, setMemberKeyword] = useState('');
   const [memberCandidates, setMemberCandidates] = useState<LeaderCandidate[]>([]);
   const [err, setErr] = useState<string | null>(null);
+  const [credEdit, setCredEdit] = useState<Record<string, { account: string; password: string }>>({});
+  const [createdCredential, setCreatedCredential] = useState<CreatedCredential | null>(null);
 
   const isLeagueAdmin = me?.role === 'LEAGUE_ADMIN';
   const allowedModes: SearchMode[] = isLeagueAdmin ? ['name', 'studentId', 'idCard'] : ['name', 'studentId'];
@@ -103,6 +114,7 @@ export default function OrgsPage() {
       );
       setOrgs(Array.isArray(list) ? list : []);
       if (m.role !== 'LEAGUE_ADMIN') setLeaderCandidates([]);
+      if (m.role !== 'LEAGUE_ADMIN') setCreatedCredential(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : tc('error'));
     }
@@ -121,7 +133,7 @@ export default function OrgsPage() {
     }
     if (!confirmAction('确认新建该组织吗？')) return;
     try {
-      await apiFetch('/organizations', {
+      const created = await apiFetch<Org>('/organizations', {
         method: 'POST',
         token,
         body: JSON.stringify({
@@ -136,6 +148,11 @@ export default function OrgsPage() {
           typeRu: form.type.trim(),
           leaderUserId: form.leaderUserId || undefined,
         }),
+      });
+      setCreatedCredential({
+        orgName: created.nameZh || form.name.trim(),
+        account: created.adminAccount || '—',
+        password: created.adminPassword || '—',
       });
       setForm({
         name: '',
@@ -182,6 +199,13 @@ export default function OrgsPage() {
       setMemberKeyword('');
       setMemberCandidates([]);
       setAddMemberUserId('');
+      setCredEdit((prev) => ({
+        ...prev,
+        [id]: {
+          account: d.adminAccount || '',
+          password: d.adminPassword || '',
+        },
+      }));
     } catch (e) {
       setErr(e instanceof Error ? e.message : tc('error'));
     }
@@ -297,6 +321,30 @@ export default function OrgsPage() {
       setOperatorName('');
       setDetail(null);
       load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : tc('error'));
+    }
+  }
+
+  async function saveCredential(orgId: string) {
+    if (!token || !isLeagueAdmin) return;
+    const row = credEdit[orgId];
+    if (!row?.account?.trim() || !row?.password?.trim()) {
+      setErr('请填写账号和密码');
+      return;
+    }
+    if (!confirmAction('确认修改该组织账号和密码吗？')) return;
+    try {
+      await apiFetch(`/organizations/${orgId}/credential`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({
+          account: row.account.trim(),
+          password: row.password.trim(),
+        }),
+      });
+      await load();
+      if (detail?.id === orgId) await openDetail(orgId);
     } catch (e) {
       setErr(e instanceof Error ? e.message : tc('error'));
     }
@@ -420,6 +468,15 @@ export default function OrgsPage() {
         </form>
       )}
 
+      {isLeagueAdmin && createdCredential ? (
+        <div className="card-soft" style={{ display: 'grid', gap: 6 }}>
+          <h4 style={{ margin: 0 }}>新建组织账号已生成</h4>
+          <div className="topbar-muted">组织：{createdCredential.orgName}</div>
+          <div className="topbar-muted">账号：{createdCredential.account}</div>
+          <div className="topbar-muted">密码：{createdCredential.password}</div>
+        </div>
+      ) : null}
+
         <section className="card-soft" style={{ display: 'grid', gap: 10 }}>
           <h3 style={{ margin: 0 }}>组织概览</h3>
           <ul className="list-clean">
@@ -440,6 +497,11 @@ export default function OrgsPage() {
                       {triField(o as unknown as Record<string, unknown>, 'type', locale)}
                       {typeof o._count?.members === 'number' ? ` · 成员 ${o._count.members}` : ''}
                     </span>
+                    {isLeagueAdmin ? (
+                      <span className="topbar-muted">
+                        账号：{o.adminAccount || '—'} · 密码：{o.adminPassword || '—'}
+                      </span>
+                    ) : null}
                   </div>
                   {canManageOrg(o.id) ? (
                     <div style={{ display: 'flex', gap: 8 }}>
@@ -560,6 +622,34 @@ export default function OrgsPage() {
             </button>
           </div>
           <div className="topbar-muted">简介：{detail.descriptionZh || '—'}</div>
+          {isLeagueAdmin ? (
+            <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
+              <h4 style={{ margin: 0 }}>组织账号管理</h4>
+              <input
+                placeholder="组织账号"
+                value={credEdit[detail.id]?.account ?? detail.adminAccount ?? ''}
+                onChange={(e) =>
+                  setCredEdit((s) => ({
+                    ...s,
+                    [detail.id]: { account: e.target.value, password: s[detail.id]?.password ?? detail.adminPassword ?? '' },
+                  }))
+                }
+              />
+              <input
+                placeholder="组织密码"
+                value={credEdit[detail.id]?.password ?? detail.adminPassword ?? ''}
+                onChange={(e) =>
+                  setCredEdit((s) => ({
+                    ...s,
+                    [detail.id]: { account: s[detail.id]?.account ?? detail.adminAccount ?? '', password: e.target.value },
+                  }))
+                }
+              />
+              <button type="button" onClick={() => saveCredential(detail.id)}>
+                保存账号密码
+              </button>
+            </div>
+          ) : null}
           <h4 style={{ margin: 0 }}>成员管理</h4>
           <ul className="list-clean">
             {detail.members.map((m) => (

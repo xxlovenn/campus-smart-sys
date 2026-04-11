@@ -7,7 +7,6 @@ import {
 import { PlanSource, TaskStatus, UserRole } from '@prisma/client';
 import { AuthorizationService } from '../authorization/authorization.service';
 import {
-  canAttachRelatedOrgs,
   canCreateTask,
 } from '../authorization/permission.policy';
 import { PrismaService } from '../prisma/prisma.service';
@@ -21,6 +20,20 @@ const APPROVAL = {
 const SOURCE = {
   ORG_REQUEST: 'ORG_REQUEST',
   LEAGUE_PUBLISHED: 'LEAGUE_PUBLISHED',
+} as const;
+
+const TARGET = {
+  ORGS: 'ORGS',
+  ALL_STUDENTS: 'ALL_STUDENTS',
+  GRADE: 'GRADE',
+  MAJOR: 'MAJOR',
+  CLASS: 'CLASS',
+} as const;
+
+const ORG_REVIEW = {
+  PENDING: 'PENDING',
+  APPROVED: 'APPROVED',
+  REJECTED: 'REJECTED',
 } as const;
 
 @Injectable()
@@ -43,17 +56,11 @@ export class TasksService {
   private async syncApprovedTaskToMemberPlans(taskId: string) {
     const task = await (this.prisma.task as any).findUnique({
       where: { id: taskId },
-      include: { primaryOrg: true },
+      include: { primaryOrg: true, relatedOrgs: true },
     });
-    if (!task || !task.primaryOrgId || task.approvalStatus !== APPROVAL.APPROVED) return;
+    if (!task || task.approvalStatus !== APPROVAL.APPROVED) return;
 
-    const members = await this.prisma.organizationMember.findMany({
-      where: { organizationId: task.primaryOrgId },
-      include: { user: { select: { role: true } } },
-    });
-    const memberIds = members
-      .filter((m) => m.user.role === UserRole.STUDENT)
-      .map((m) => m.userId);
+    const memberIds = await this.resolveTargetStudentIds(task);
 
     if (memberIds.length === 0) return;
 
@@ -72,6 +79,106 @@ export class TasksService {
     });
   }
 
+  private async resolveTargetStudentIds(task: any): Promise<string[]> {
+    if (task.targetType === TARGET.ALL_STUDENTS) {
+      const users = await this.prisma.user.findMany({
+        where: { role: UserRole.STUDENT },
+        select: { id: true },
+      });
+      return users.map((u) => u.id);
+    }
+
+    if (task.targetType === TARGET.GRADE && task.targetGrade) {
+      const users = await this.prisma.user.findMany({
+        where: { role: UserRole.STUDENT, grade: task.targetGrade },
+        select: { id: true },
+      });
+      return users.map((u) => u.id);
+    }
+
+    if (task.targetType === TARGET.MAJOR && task.targetMajor) {
+      const users = await this.prisma.user.findMany({
+        where: {
+          role: UserRole.STUDENT,
+          ...(task.targetGrade ? { grade: task.targetGrade } : {}),
+          major: task.targetMajor,
+        },
+        select: { id: true },
+      });
+      return users.map((u) => u.id);
+    }
+
+    if (task.targetType === TARGET.CLASS && task.targetClass) {
+      const users = await this.prisma.user.findMany({
+        where: {
+          role: UserRole.STUDENT,
+          ...(task.targetGrade ? { grade: task.targetGrade } : {}),
+          ...(task.targetMajor ? { major: task.targetMajor } : {}),
+          className: task.targetClass,
+        },
+        select: { id: true },
+      });
+      return users.map((u) => u.id);
+    }
+
+    const orgIds = new Set<string>();
+    if (task.primaryOrgId) orgIds.add(task.primaryOrgId);
+    for (const rel of task.relatedOrgs ?? []) {
+      if (typeof rel.organizationId === 'string') orgIds.add(rel.organizationId);
+    }
+    if (orgIds.size === 0) return [];
+
+    const members = await this.prisma.organizationMember.findMany({
+      where: { organizationId: { in: Array.from(orgIds) } },
+      include: { user: { select: { role: true } } },
+    });
+    return Array.from(
+      new Set(
+        members
+          .filter((m) => m.user.role === UserRole.STUDENT)
+          .map((m) => m.userId),
+      ),
+    );
+  }
+
+  private async finalizeTaskApproval(taskId: string) {
+    const task = await (this.prisma.task as any).findUnique({
+      where: { id: taskId },
+      include: { orgReviews: true },
+    });
+    if (!task || task.approvalStatus === APPROVAL.REJECTED) return task;
+
+    const hasOrgReviews = Array.isArray(task.orgReviews) && task.orgReviews.length > 0;
+    const anyOrgRejected = hasOrgReviews && task.orgReviews.some((r: any) => r.status === ORG_REVIEW.REJECTED);
+    if (anyOrgRejected) {
+      return (this.prisma.task as any).update({
+        where: { id: taskId },
+        data: { approvalStatus: APPROVAL.REJECTED, reviewNote: '协办社团审核未通过' },
+      });
+    }
+
+    const leagueApproved = !!task.reviewedById;
+    const allOrgApproved =
+      !hasOrgReviews || task.orgReviews.every((r: any) => r.status === ORG_REVIEW.APPROVED);
+
+    if (leagueApproved && allOrgApproved) {
+      const updated = await (this.prisma.task as any).update({
+        where: { id: taskId },
+        data: { approvalStatus: APPROVAL.APPROVED, approvedAt: task.approvedAt ?? new Date(), reviewNote: '' },
+      });
+      return updated;
+    }
+
+    if (leagueApproved && hasOrgReviews) {
+      return (this.prisma.task as any).update({
+        where: { id: taskId },
+        data: { approvalStatus: APPROVAL.PENDING, reviewNote: '已通过团委审核，待协办社团审核' },
+      });
+    }
+
+    return task;
+  }
+
   async listVisible(userId: string, role: UserRole) {
     if (role === UserRole.LEAGUE_ADMIN) {
       return (this.prisma.task as any).findMany({
@@ -86,6 +193,29 @@ export class TasksService {
     }
 
     const managedOrgIds = await this.authorization.managedOrgIds(userId);
+    const me = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { grade: true, major: true, className: true },
+    });
+    const audienceWhere: Record<string, unknown>[] = [{ source: SOURCE.LEAGUE_PUBLISHED, targetType: TARGET.ALL_STUDENTS }];
+    if (me?.grade) audienceWhere.push({ source: SOURCE.LEAGUE_PUBLISHED, targetType: TARGET.GRADE, targetGrade: me.grade });
+    if (me?.major) {
+      audienceWhere.push({
+        source: SOURCE.LEAGUE_PUBLISHED,
+        targetType: TARGET.MAJOR,
+        targetMajor: me.major,
+        ...(me.grade ? { targetGrade: me.grade } : {}),
+      });
+    }
+    if (me?.className) {
+      audienceWhere.push({
+        source: SOURCE.LEAGUE_PUBLISHED,
+        targetType: TARGET.CLASS,
+        targetClass: me.className,
+        ...(me.grade ? { targetGrade: me.grade } : {}),
+        ...(me.major ? { targetMajor: me.major } : {}),
+      });
+    }
     if (managedOrgIds.length > 0) {
       return (this.prisma.task as any).findMany({
         where: {
@@ -97,6 +227,7 @@ export class TasksService {
               OR: [
                 { primaryOrgId: { in: managedOrgIds } },
                 { relatedOrgs: { some: { organizationId: { in: managedOrgIds } } } },
+                ...audienceWhere,
               ],
             },
           ],
@@ -122,6 +253,7 @@ export class TasksService {
             OR: [
               { primaryOrgId: { in: memberOrgIds } },
               { relatedOrgs: { some: { organizationId: { in: memberOrgIds } } } },
+              ...audienceWhere,
             ],
           },
         ],
@@ -159,6 +291,8 @@ export class TasksService {
       where: { approvalStatus: APPROVAL.PENDING },
       include: {
         primaryOrg: true,
+        relatedOrgs: { include: { organization: true } },
+        orgReviews: { include: { organization: true } },
         creator: { select: { id: true, name: true, email: true } },
         assignee: { select: { id: true, name: true, email: true } },
       },
@@ -177,10 +311,9 @@ export class TasksService {
       where: { id: taskId },
       data: approve
         ? {
-            approvalStatus: APPROVAL.APPROVED,
             reviewedById: reviewerId,
             approvedAt: new Date(),
-            reviewNote: '',
+            reviewNote: '已通过团委审核',
           }
         : {
             approvalStatus: APPROVAL.REJECTED,
@@ -193,16 +326,29 @@ export class TasksService {
       },
     });
 
-    if (approve) {
+    const finalized = approve ? await this.finalizeTaskApproval(taskId) : updated;
+    if (finalized?.approvalStatus === APPROVAL.APPROVED) {
       await this.syncApprovedTaskToMemberPlans(taskId);
     }
 
     await this.prisma.notification.create({
       data: {
         userId: updated.creatorId,
-        titleZh: approve ? '活动申请已通过' : '活动申请被驳回',
-        titleEn: approve ? 'Activity request approved' : 'Activity request rejected',
-        titleRu: approve ? 'Заявка одобрена' : 'Заявка отклонена',
+        titleZh: !approve
+          ? '活动申请被驳回'
+          : finalized?.approvalStatus === APPROVAL.APPROVED
+            ? '活动申请已通过'
+            : '活动申请待协办社团审核',
+        titleEn: !approve
+          ? 'Activity request rejected'
+          : finalized?.approvalStatus === APPROVAL.APPROVED
+            ? 'Activity request approved'
+            : 'Waiting co-organizer approvals',
+        titleRu: !approve
+          ? 'Заявка отклонена'
+          : finalized?.approvalStatus === APPROVAL.APPROVED
+            ? 'Заявка одобрена'
+            : 'Ожидается согласование соорганизаторов',
         bodyZh: updated.titleZh,
         bodyEn: updated.titleEn,
         bodyRu: updated.titleRu,
@@ -210,7 +356,65 @@ export class TasksService {
       },
     });
 
-    return updated;
+    return finalized ?? updated;
+  }
+
+  async orgReviewRequests(userId: string) {
+    const managedOrgIds = await this.authorization.managedOrgIds(userId);
+    if (managedOrgIds.length === 0) return [];
+    return (this.prisma.task as any).findMany({
+      where: {
+        source: SOURCE.ORG_REQUEST,
+        approvalStatus: APPROVAL.PENDING,
+        relatedOrgs: { some: { organizationId: { in: managedOrgIds } } },
+      },
+      include: {
+        primaryOrg: true,
+        relatedOrgs: { include: { organization: true } },
+        orgReviews: { include: { organization: true } },
+        creator: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: [{ createdAt: 'desc' }],
+    });
+  }
+
+  async orgReviewRequest(taskId: string, reviewerId: string, approve: boolean, reason?: string) {
+    const managedOrgIds = await this.authorization.managedOrgIds(reviewerId);
+    if (managedOrgIds.length === 0) throw new ForbiddenException('No organization review scope');
+
+    const targetRows = await (this.prisma.taskOrgReview as any).findMany({
+      where: { taskId, organizationId: { in: managedOrgIds } },
+    });
+    if (!targetRows.length) {
+      throw new ForbiddenException('No permission to review this request');
+    }
+
+    await (this.prisma.taskOrgReview as any).updateMany({
+      where: {
+        taskId,
+        organizationId: { in: managedOrgIds },
+        status: ORG_REVIEW.PENDING,
+      },
+      data: {
+        status: approve ? ORG_REVIEW.APPROVED : ORG_REVIEW.REJECTED,
+        reviewerId,
+        reviewedAt: new Date(),
+        reason: approve ? '' : reason?.trim() || 'Rejected by co-organizer',
+      },
+    });
+
+    if (!approve) {
+      await (this.prisma.task as any).update({
+        where: { id: taskId },
+        data: { approvalStatus: APPROVAL.REJECTED, reviewNote: reason?.trim() || '协办社团审核未通过' },
+      });
+    }
+
+    const finalized = await this.finalizeTaskApproval(taskId);
+    if (finalized?.approvalStatus === APPROVAL.APPROVED) {
+      await this.syncApprovedTaskToMemberPlans(taskId);
+    }
+    return finalized;
   }
 
   async create(
@@ -229,6 +433,10 @@ export class TasksService {
       assigneeId?: string;
       primaryOrgId?: string;
       relatedOrgIds?: string[];
+      targetType?: 'ORGS' | 'ALL_STUDENTS' | 'GRADE' | 'MAJOR' | 'CLASS';
+      targetGrade?: string;
+      targetMajor?: string;
+      targetClass?: string;
     },
   ) {
     const managedOrgIds = await this.authorization.managedOrgIds(userId);
@@ -237,8 +445,10 @@ export class TasksService {
       : managedOrgIds.length > 0
         ? UserRole.ORG_ADMIN
         : UserRole.STUDENT;
+    const targetType = effectiveRole === UserRole.LEAGUE_ADMIN ? dto.targetType ?? TARGET.ORGS : TARGET.ORGS;
 
-    if (!canCreateTask(effectiveRole, dto.primaryOrgId, managedOrgIds)) {
+    const needsOrgScopeCheck = !(effectiveRole === UserRole.LEAGUE_ADMIN && targetType !== TARGET.ORGS);
+    if (needsOrgScopeCheck && !canCreateTask(effectiveRole, dto.primaryOrgId, managedOrgIds)) {
       if (effectiveRole === UserRole.LEAGUE_ADMIN) {
         throw new ForbiddenException('primaryOrgId is required');
       }
@@ -247,8 +457,26 @@ export class TasksService {
       }
       throw new ForbiddenException('Students cannot create org tasks');
     }
-    if (!canAttachRelatedOrgs(effectiveRole, dto.relatedOrgIds, managedOrgIds)) {
-      throw new ForbiddenException('Related organizations must be within managed scope');
+    if (!dto.descZh?.trim() || !dto.descEn?.trim() || !dto.descRu?.trim()) {
+      throw new BadRequestException('Activity description is required');
+    }
+    if (
+      effectiveRole === UserRole.LEAGUE_ADMIN &&
+      targetType === TARGET.ORGS &&
+      !dto.primaryOrgId &&
+      !dto.relatedOrgIds?.length
+    ) {
+      throw new BadRequestException('At least one organization target is required');
+    }
+
+    if (effectiveRole === UserRole.LEAGUE_ADMIN && targetType === TARGET.GRADE && !dto.targetGrade?.trim()) {
+      throw new BadRequestException('targetGrade is required for grade targeting');
+    }
+    if (effectiveRole === UserRole.LEAGUE_ADMIN && targetType === TARGET.MAJOR && !dto.targetMajor?.trim()) {
+      throw new BadRequestException('targetMajor is required for major targeting');
+    }
+    if (effectiveRole === UserRole.LEAGUE_ADMIN && targetType === TARGET.CLASS && !dto.targetClass?.trim()) {
+      throw new BadRequestException('targetClass is required for class targeting');
     }
 
     const now = new Date();
@@ -284,6 +512,10 @@ export class TasksService {
         primaryOrgId: dto.primaryOrgId,
         source:
           effectiveRole === UserRole.LEAGUE_ADMIN ? SOURCE.LEAGUE_PUBLISHED : SOURCE.ORG_REQUEST,
+        targetType,
+        targetGrade: effectiveRole === UserRole.LEAGUE_ADMIN ? dto.targetGrade?.trim() || null : null,
+        targetMajor: effectiveRole === UserRole.LEAGUE_ADMIN ? dto.targetMajor?.trim() || null : null,
+        targetClass: effectiveRole === UserRole.LEAGUE_ADMIN ? dto.targetClass?.trim() || null : null,
         approvalStatus:
           effectiveRole === UserRole.LEAGUE_ADMIN
             ? APPROVAL.APPROVED
@@ -299,10 +531,20 @@ export class TasksService {
               },
             }
           : undefined,
+        orgReviews:
+          effectiveRole === UserRole.ORG_ADMIN && dto.relatedOrgIds?.length
+            ? {
+                createMany: {
+                  data: dto.relatedOrgIds.map((organizationId) => ({ organizationId })),
+                  skipDuplicates: true,
+                },
+              }
+            : undefined,
       },
       include: {
         primaryOrg: true,
         relatedOrgs: { include: { organization: true } },
+        orgReviews: true,
         assignee: { select: { id: true, name: true, email: true } },
         creator: { select: { id: true, name: true, email: true } },
       },

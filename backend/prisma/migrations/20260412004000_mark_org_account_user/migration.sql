@@ -1,0 +1,3 @@
+ALTER TABLE "User"
+ADD COLUMN "isOrgAccount" BOOLEAN NOT NULL DEFAULT false;
+

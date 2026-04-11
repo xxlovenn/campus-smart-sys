@@ -13,6 +13,14 @@ type Me = {
   role: string;
   studentId?: string | null;
 };
+type OverviewStatusRow = {
+  status?: string;
+  _count?: { _all?: number };
+};
+type TaskOverview = {
+  grouped?: OverviewStatusRow[];
+  tasks?: Array<{ approvalStatus?: string }>;
+};
 
 type QuickKey = 'timeline' | 'tasks' | 'organizations' | 'profile' | 'notifications' | 'admin';
 type SidebarRole = 'student' | 'orgAdmin' | 'leagueAdmin';
@@ -91,6 +99,7 @@ export default function DashboardPage() {
   const tc = useTranslations('common');
   const [token, setToken] = useState<string | null>(null);
   const [me, setMe] = useState<Me | null>(null);
+  const [overview, setOverview] = useState<TaskOverview | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
@@ -100,12 +109,28 @@ export default function DashboardPage() {
   useEffect(() => {
     if (!token) {
       setMe(null);
+      setOverview(null);
       return;
     }
     setErr(null);
     apiFetch<Me>('/users/me', { token })
-      .then(setMe)
-      .catch((e) => setErr(e instanceof Error ? e.message : tc('error')));
+      .then(async (user) => {
+        setMe(user);
+        if (user.role !== 'LEAGUE_ADMIN') {
+          setOverview(null);
+          return;
+        }
+        try {
+          const ov = await apiFetch<TaskOverview>('/tasks/admin/overview', { token });
+          setOverview(ov);
+        } catch {
+          setOverview(null);
+        }
+      })
+      .catch((e) => {
+        setOverview(null);
+        setErr(e instanceof Error ? e.message : tc('error'));
+      });
   }, [token, tc]);
 
   const theme = useMemo(() => {
@@ -190,6 +215,63 @@ export default function DashboardPage() {
         {err && (
           <p style={{ color: 'var(--danger)', marginTop: 16, marginBottom: 0 }}>{err}</p>
         )}
+
+        {me?.role === 'LEAGUE_ADMIN' && overview ? (
+          <div className="card-soft" style={{ marginTop: 22 }}>
+            {(() => {
+              const grouped = Array.isArray(overview.grouped) ? overview.grouped : [];
+              const rows = Array.isArray(overview.tasks) ? overview.tasks : [];
+              const statusCount = (status: string) =>
+                grouped.find((row) => row.status === status)?._count?._all ?? 0;
+              const pendingApproval = rows.filter(
+                (row) => row.approvalStatus === 'PENDING_APPROVAL',
+              ).length;
+              const approved = rows.filter((row) => row.approvalStatus === 'APPROVED').length;
+              const rejected = rows.filter((row) => row.approvalStatus === 'REJECTED').length;
+              return (
+                <div style={{ display: 'grid', gap: 14 }}>
+                  <h2 style={{ marginBottom: 0 }}>全局任务看板</h2>
+                  <div className="grid-two">
+                    <div className="card-soft">
+                      <div className="topbar-muted">待开始</div>
+                      <strong style={{ fontSize: 22 }}>{statusCount('TODO')}</strong>
+                    </div>
+                    <div className="card-soft">
+                      <div className="topbar-muted">进行中</div>
+                      <strong style={{ fontSize: 22 }}>{statusCount('IN_PROGRESS')}</strong>
+                    </div>
+                    <div className="card-soft">
+                      <div className="topbar-muted">已完成</div>
+                      <strong style={{ fontSize: 22 }}>{statusCount('DONE')}</strong>
+                    </div>
+                    <div className="card-soft">
+                      <div className="topbar-muted">受阻</div>
+                      <strong style={{ fontSize: 22 }}>{statusCount('BLOCKED')}</strong>
+                    </div>
+                  </div>
+                  <div className="grid-two">
+                    <div className="card-soft">
+                      <div className="topbar-muted">待审核申请</div>
+                      <strong style={{ fontSize: 22 }}>{pendingApproval}</strong>
+                    </div>
+                    <div className="card-soft">
+                      <div className="topbar-muted">审核通过</div>
+                      <strong style={{ fontSize: 22 }}>{approved}</strong>
+                    </div>
+                    <div className="card-soft">
+                      <div className="topbar-muted">审核驳回</div>
+                      <strong style={{ fontSize: 22 }}>{rejected}</strong>
+                    </div>
+                    <div className="card-soft">
+                      <div className="topbar-muted">任务总数</div>
+                      <strong style={{ fontSize: 22 }}>{rows.length}</strong>
+                    </div>
+                  </div>
+                </div>
+              );
+            })()}
+          </div>
+        ) : null}
 
         {me && (
           <div className="card-soft" style={{ marginTop: 22 }}>

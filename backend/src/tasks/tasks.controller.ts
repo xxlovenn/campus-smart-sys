@@ -37,16 +37,16 @@ class CreateTaskDto {
   @MinLength(1)
   titleRu!: string;
 
-  @IsOptional()
   @IsString()
+  @MinLength(1)
   descZh?: string;
 
-  @IsOptional()
   @IsString()
+  @MinLength(1)
   descEn?: string;
 
-  @IsOptional()
   @IsString()
+  @MinLength(1)
   descRu?: string;
 
   @IsOptional()
@@ -73,6 +73,30 @@ class CreateTaskDto {
   @IsArray()
   @IsUUID('4', { each: true })
   relatedOrgIds?: string[];
+
+  @IsOptional()
+  @IsString()
+  targetType?: 'ORGS' | 'ALL_STUDENTS' | 'GRADE' | 'MAJOR' | 'CLASS';
+
+  @IsOptional()
+  @IsString()
+  targetGrade?: string;
+
+  @IsOptional()
+  @IsString()
+  targetMajor?: string;
+
+  @IsOptional()
+  @IsString()
+  targetClass?: string;
+}
+
+class OrgReviewTaskRequestDto {
+  @IsBoolean()
+  approve!: boolean;
+  @IsOptional()
+  @IsString()
+  reason?: string;
 }
 
 class UpdateStatusDto {
@@ -121,6 +145,24 @@ export class TasksController {
     @Body() body: ReviewTaskRequestDto,
   ) {
     return this.tasks.reviewRequest(id, req.user.id, body.approve, body.reason);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORG_ADMIN)
+  @Get('org/requests')
+  orgRequests(@Req() req: { user: { id: string } }) {
+    return this.tasks.orgReviewRequests(req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.ORG_ADMIN)
+  @Patch('org/requests/:id/review')
+  orgReviewRequest(
+    @Req() req: { user: { id: string } },
+    @Param('id') id: string,
+    @Body() body: OrgReviewTaskRequestDto,
+  ) {
+    return this.tasks.orgReviewRequest(id, req.user.id, body.approve, body.reason);
   }
 
   @UseGuards(JwtAuthGuard)

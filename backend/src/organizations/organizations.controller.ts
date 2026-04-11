@@ -106,6 +106,15 @@ class UpdateOrgDto {
   leaderUserId?: string;
 }
 
+class UpdateOrgCredentialDto {
+  @IsString()
+  @MinLength(6)
+  account!: string;
+  @IsString()
+  @MinLength(6)
+  password!: string;
+}
+
 @Controller('organizations')
 export class OrganizationsController {
   constructor(private orgs: OrganizationsService) {}
@@ -171,6 +180,16 @@ export class OrganizationsController {
     @Req() req: { user: { id: string; role: UserRole } },
   ) {
     return this.orgs.removeMember(id, userId, req.user.id, req.user.role);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Patch(':id/credential')
+  updateCredential(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: UpdateOrgCredentialDto,
+  ) {
+    return this.orgs.updateCredential(id, body.account, body.password);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

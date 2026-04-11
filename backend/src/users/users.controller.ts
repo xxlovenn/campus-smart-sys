@@ -5,6 +5,28 @@ import { AuthorizationService } from '../authorization/authorization.service';
 import { resolveEffectiveRole } from '../authorization/permission.policy';
 import { PrismaService } from '../prisma/prisma.service';
 
+type UserListRow = {
+  id: string;
+  email: string;
+  name: string;
+  grade: string | null;
+  major: string | null;
+  className: string | null;
+  role: UserRole;
+};
+
+type CurrentUserRow = {
+  id: string;
+  email: string;
+  name: string;
+  studentId: string | null;
+  phone: string | null;
+  grade: string | null;
+  major: string | null;
+  className: string | null;
+  createdAt: Date;
+};
+
 @Controller('users')
 export class UsersController {
   constructor(
@@ -21,33 +43,39 @@ export class UsersController {
     const platformRole = req.user.platformRole ?? req.user.role;
 
     if (platformRole === UserRole.LEAGUE_ADMIN) {
-      const rows = await this.prisma.user.findMany({
+      const rows = await (this.prisma.user as any).findMany({
         select: {
           id: true,
           email: true,
           name: true,
+          grade: true,
+          major: true,
+          className: true,
           role: true,
         },
         orderBy: { createdAt: 'asc' },
-      });
+      }) as UserListRow[];
       return Promise.all(rows.map(async (row) => ({
         id: row.id,
         email: row.email,
         name: row.name,
+        grade: row.grade,
+        major: row.major,
+        className: row.className,
         role: resolveEffectiveRole(row.role, (await this.authorization.managedOrgIds(row.id)).length),
       })));
     }
 
     const managedOrgIds = await this.authorization.managedOrgIds(userId);
     if (managedOrgIds.length === 0) {
-      const me = await this.prisma.user.findUnique({
+      const me = await (this.prisma.user as any).findUnique({
         where: { id: userId },
-        select: { id: true, email: true, name: true },
-      });
+        select: { id: true, email: true, name: true, grade: true, major: true, className: true },
+      }) as Omit<UserListRow, 'role'> | null;
       return me ? [{ ...me, role: UserRole.STUDENT }] : [];
     }
 
-    const rows = await this.prisma.user.findMany({
+    const rows = await (this.prisma.user as any).findMany({
       where: {
         memberships: {
           some: { organizationId: { in: managedOrgIds } },
@@ -57,15 +85,21 @@ export class UsersController {
         id: true,
         email: true,
         name: true,
+        grade: true,
+        major: true,
+        className: true,
         role: true,
       },
       orderBy: { createdAt: 'asc' },
-    });
+    }) as UserListRow[];
 
     return Promise.all(rows.map(async (row) => ({
       id: row.id,
       email: row.email,
       name: row.name,
+      grade: row.grade,
+      major: row.major,
+      className: row.className,
       role: resolveEffectiveRole(row.role, (await this.authorization.managedOrgIds(row.id)).length),
     })));
   }
@@ -78,7 +112,7 @@ export class UsersController {
     const [managedOrgIds, memberOrgIds, user] = await Promise.all([
       this.authorization.managedOrgIds(userId),
       this.authorization.memberOrgIds(userId),
-      this.prisma.user.findUnique({
+      (this.prisma.user as any).findUnique({
         where: { id: userId },
         select: {
           id: true,
@@ -86,9 +120,12 @@ export class UsersController {
           name: true,
           studentId: true,
           phone: true,
+          grade: true,
+          major: true,
+          className: true,
           createdAt: true,
         },
-      }),
+      }) as Promise<CurrentUserRow | null>,
     ]);
 
     if (!user) return null;

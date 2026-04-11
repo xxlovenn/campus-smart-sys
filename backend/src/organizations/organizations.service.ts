@@ -1,5 +1,6 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { OrganizationMemberRole, UserRole } from '@prisma/client';
+import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthorizationService } from '../authorization/authorization.service';
 
@@ -9,6 +10,114 @@ export class OrganizationsService {
     private prisma: PrismaService,
     private authorization: AuthorizationService,
   ) {}
+
+  private async generateUniqueOrgAccount(prefix = 'org') {
+    while (true) {
+      const account = `${prefix}_${Date.now()}_${Math.floor(Math.random() * 10000)}@campus.org`;
+      const exists = await this.prisma.user.findUnique({ where: { email: account }, select: { id: true } });
+      if (!exists) return account;
+    }
+  }
+
+  private async generateUniqueDefaultPassword() {
+    while (true) {
+      const password = `Org@${Math.random().toString(36).slice(2, 10)}${Math.floor(Math.random() * 10)}`;
+      const exists = await this.prisma.organization.findFirst({
+        where: { adminPassword: password },
+        select: { id: true },
+      });
+      if (!exists) return password;
+    }
+  }
+
+  private async ensureOrgCredential(orgId: string) {
+    const org = await this.prisma.organization.findUnique({
+      where: { id: orgId },
+      include: {
+        adminUser: { select: { id: true, email: true, isOrgAccount: true } },
+      },
+    });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const hasAllFields =
+      !!org.adminUserId &&
+      !!org.adminAccount &&
+      !!org.adminPassword &&
+      !!org.adminUser &&
+      org.adminUser.isOrgAccount &&
+      org.adminUser.email === org.adminAccount;
+
+    if (hasAllFields) return;
+
+    let account = org.adminAccount?.trim() || '';
+    let password = org.adminPassword?.trim() || '';
+    let adminUserId = org.adminUserId || '';
+    let adminUser = org.adminUser;
+
+    // If linked user is absent or not a dedicated org account, create one instead of hijacking a normal student account.
+    if (!adminUser || !adminUser.isOrgAccount) {
+      if (!account) {
+        account = await this.generateUniqueOrgAccount('org');
+      }
+      if (!password) password = await this.generateUniqueDefaultPassword();
+      const passwordHash = await bcrypt.hash(password, 10);
+      const created = await this.prisma.user.create({
+        data: {
+          email: account,
+          passwordHash,
+          name: `${org.nameZh}组织账号`,
+          isOrgAccount: true,
+          role: UserRole.STUDENT,
+        },
+        select: { id: true },
+      });
+      adminUserId = created.id;
+    } else {
+      adminUserId = adminUser.id;
+      if (!account) account = adminUser.email;
+      if (!password) password = await this.generateUniqueDefaultPassword();
+
+      if (adminUser.email !== account) {
+        await this.prisma.user.update({
+          where: { id: adminUser.id },
+          data: { email: account },
+        });
+      }
+      if (!org.adminPassword) {
+        await this.prisma.user.update({
+          where: { id: adminUser.id },
+          data: { passwordHash: await bcrypt.hash(password, 10) },
+        });
+      }
+    }
+
+    await this.prisma.organization.update({
+      where: { id: org.id },
+      data: {
+        adminUserId,
+        adminAccount: account,
+        adminPassword: password,
+      },
+    });
+
+    await this.prisma.organizationMember.upsert({
+      where: { userId_organizationId: { userId: adminUserId, organizationId: org.id } },
+      update: {
+        memberRole: OrganizationMemberRole.ORG_ADMIN,
+        roleZh: '系统组织账号',
+        roleEn: 'System org account',
+        roleRu: 'Системная учетная запись',
+      },
+      create: {
+        userId: adminUserId,
+        organizationId: org.id,
+        memberRole: OrganizationMemberRole.ORG_ADMIN,
+        roleZh: '系统组织账号',
+        roleEn: 'System org account',
+        roleRu: 'Системная учетная запись',
+      },
+    });
+  }
 
   async listForUser(userId: string, role: UserRole) {
     if (role === UserRole.LEAGUE_ADMIN) {
@@ -23,7 +132,7 @@ export class OrganizationsService {
     });
   }
 
-  create(data: {
+  async create(data: {
     nameZh: string;
     nameEn: string;
     nameRu: string;
@@ -35,25 +144,64 @@ export class OrganizationsService {
     typeRu: string;
     leaderUserId?: string;
   }) {
-    return this.prisma.organization.create({
+    const account = await this.generateUniqueOrgAccount();
+    const password = await this.generateUniqueDefaultPassword();
+    const passwordHash = await bcrypt.hash(password, 10);
+
+    const adminUser = await this.prisma.user.create({
+      data: {
+        email: account,
+        passwordHash,
+        name: `${data.nameZh}组织账号`,
+        isOrgAccount: true,
+        role: UserRole.STUDENT,
+      },
+      select: { id: true },
+    });
+
+    const org = await this.prisma.organization.create({
       data: {
         ...data,
         descriptionZh: data.descriptionZh ?? '',
         descriptionEn: data.descriptionEn ?? '',
         descriptionRu: data.descriptionRu ?? '',
+        adminUserId: adminUser.id,
+        adminAccount: account,
+        adminPassword: password,
       },
       include: {
         leader: { select: { id: true, name: true, email: true, studentId: true } },
         _count: { select: { members: true } },
       },
     });
+
+    await this.prisma.organizationMember.create({
+      data: {
+        userId: adminUser.id,
+        organizationId: org.id,
+        memberRole: OrganizationMemberRole.ORG_ADMIN,
+        roleZh: '系统组织账号',
+        roleEn: 'System org account',
+        roleRu: 'Системная учетная запись',
+      },
+    });
+
+    return org;
   }
 
-  adminList() {
+  async adminList() {
+    const orgIds = await this.prisma.organization.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: { id: true },
+    });
+    for (const row of orgIds) {
+      await this.ensureOrgCredential(row.id);
+    }
     return this.prisma.organization.findMany({
       orderBy: { createdAt: 'desc' },
       include: {
         leader: { select: { id: true, name: true, email: true, studentId: true } },
+        adminUser: { select: { id: true, name: true, email: true } },
         _count: { select: { members: true } },
       },
     });
@@ -69,10 +217,14 @@ export class OrganizationsService {
 
   async detail(orgId: string, userId: string, role: UserRole) {
     await this.assertManageScope(userId, role, orgId);
+    if (role === UserRole.LEAGUE_ADMIN) {
+      await this.ensureOrgCredential(orgId);
+    }
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
       include: {
         leader: { select: { id: true, name: true, email: true, studentId: true } },
+        adminUser: { select: { id: true, name: true, email: true } },
         members: {
           orderBy: { joinedAt: 'asc' },
           include: {
@@ -192,5 +344,30 @@ export class OrganizationsService {
     await this.prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
     await this.prisma.organization.delete({ where: { id: orgId } });
     return { ok: true, operatorName };
+  }
+
+  async updateCredential(orgId: string, account: string, password: string) {
+    await this.ensureOrgCredential(orgId);
+    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    if (!org) throw new NotFoundException('Organization not found');
+
+    const dup = await this.prisma.organization.findFirst({
+      where: { adminAccount: account, id: { not: orgId } },
+      select: { id: true },
+    });
+    if (dup) throw new ForbiddenException('Account already exists');
+
+    const passwordHash = await bcrypt.hash(password, 10);
+    if (org.adminUserId) {
+      await this.prisma.user.update({
+        where: { id: org.adminUserId },
+        data: { email: account, passwordHash },
+      });
+    }
+    await this.prisma.organization.update({
+      where: { id: orgId },
+      data: { adminAccount: account, adminPassword: password },
+    });
+    return this.adminList();
   }
 }

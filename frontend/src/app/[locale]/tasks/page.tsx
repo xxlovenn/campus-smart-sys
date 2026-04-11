@@ -6,6 +6,7 @@ import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth-storage';
 import { confirmAction } from '@/lib/confirm';
+import { Modal } from '@/components/Modal';
 import { triField } from '@/lib/tri';
 
 type Me = {
@@ -19,7 +20,21 @@ type Task = Record<string, unknown> & {
   status: string;
   approvalStatus?: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
   source?: 'ORG_REQUEST' | 'LEAGUE_PUBLISHED';
+  targetType?: 'ORGS' | 'ALL_STUDENTS' | 'GRADE' | 'MAJOR' | 'CLASS';
+  targetGrade?: string;
+  targetMajor?: string;
+  targetClass?: string;
   reviewNote?: string;
+  descZh?: string;
+  descEn?: string;
+  descRu?: string;
+  relatedOrgs?: Array<{ organizationId?: string; organization?: Record<string, unknown> }>;
+  orgReviews?: Array<{
+    organizationId?: string;
+    status?: 'PENDING' | 'APPROVED' | 'REJECTED';
+    organization?: Record<string, unknown>;
+  }>;
+  primaryOrg?: Record<string, unknown>;
   creator?: { id?: string; name?: string; email?: string };
   assignee?: { id?: string; name?: string; email?: string };
 };
@@ -50,12 +65,16 @@ type UserOption = {
   name?: string;
   email?: string;
   role?: string;
+  grade?: string | null;
+  major?: string | null;
+  className?: string | null;
 };
 
 type RequestReviewPayload = {
   approve: boolean;
   reason?: string;
 };
+type OrgReviewPayload = { approve: boolean; reason?: string };
 
 function toLocalDateTimeValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -103,9 +122,27 @@ function approvalLabel(approval?: string) {
   return '待审核';
 }
 
-function sourceLabel(source?: string) {
-  if (source === 'LEAGUE_PUBLISHED') return '团委发布';
-  return '本社申请';
+function sourceLabel(task: Task, locale: string, isOrgAdmin: boolean) {
+  if (task.source === 'LEAGUE_PUBLISHED') return '团委发布';
+  if (isOrgAdmin) return '本社团';
+  const orgName = triField((task.primaryOrg as Record<string, unknown>) ?? {}, 'name', locale);
+  return orgName ? `${orgName}申请` : '社团申请';
+}
+
+function participantLabel(task: Task, locale: string) {
+  if (task.targetType === 'ALL_STUDENTS') return '全体学生';
+  if (task.targetType === 'GRADE') return `年级：${task.targetGrade || '未设置'}`;
+  if (task.targetType === 'MAJOR') return `专业：${task.targetMajor || '未设置'}`;
+  if (task.targetType === 'CLASS') return `班级：${task.targetClass || '未设置'}`;
+  const names = new Set<string>();
+  const primary = triField((task.primaryOrg as Record<string, unknown>) ?? {}, 'name', locale);
+  if (primary) names.add(primary);
+  for (const rel of task.relatedOrgs ?? []) {
+    const name = triField((rel.organization as Record<string, unknown>) ?? {}, 'name', locale);
+    if (name) names.add(name);
+  }
+  if (names.size === 0) return '相关社团';
+  return Array.from(names).join('、');
 }
 
 export default function TasksPage() {
@@ -118,9 +155,11 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
-  const [overview, setOverview] = useState<unknown | null>(null);
   const [pendingRequests, setPendingRequests] = useState<Task[]>([]);
+  const [orgReviewRequests, setOrgReviewRequests] = useState<Task[]>([]);
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
+  const [orgRejectReason, setOrgRejectReason] = useState<Record<string, string>>({});
+  const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
   const [form, setForm] = useState(() => {
@@ -130,9 +169,15 @@ export default function TasksPage() {
 
     return {
       title: '',
+      desc: '',
       primaryOrgId: '',
       assigneeId: '',
       relatedOrgIds: '',
+      targetType: 'ORGS' as 'ORGS' | 'ALL_STUDENTS' | 'GRADE' | 'MAJOR' | 'CLASS',
+      targetOrgIds: [] as string[],
+      targetGrade: '',
+      targetMajor: '',
+      targetClass: '',
       startAt: start,
       endAt: end,
     };
@@ -144,10 +189,10 @@ export default function TasksPage() {
     if (!token) {
       setErr('登录已失效，请重新登录');
       setTasks([]);
-      setOverview(null);
       setMe(null);
       setOrgs([]);
       setUsers([]);
+      setOrgReviewRequests([]);
       return;
     }
 
@@ -168,24 +213,25 @@ export default function TasksPage() {
       setUsers(Array.isArray(userList) ? userList : []);
 
       if (m.role === 'LEAGUE_ADMIN') {
-        const [ov, req] = await Promise.all([
-          apiFetch<unknown>('/tasks/admin/overview', { token }),
-          apiFetch<Task[]>('/tasks/admin/requests', { token }),
-        ]);
-        setOverview(ov);
+        const req = await apiFetch<Task[]>('/tasks/admin/requests', { token });
         setPendingRequests(Array.isArray(req) ? req : []);
-      } else {
-        setOverview(null);
+        setOrgReviewRequests([]);
+      } else if (m.role === 'ORG_ADMIN' || (m.managedOrgIds ?? []).length > 0) {
+        const orgReq = await apiFetch<Task[]>('/tasks/org/requests', { token });
+        setOrgReviewRequests(Array.isArray(orgReq) ? orgReq : []);
         setPendingRequests([]);
+      } else {
+        setPendingRequests([]);
+        setOrgReviewRequests([]);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : tc('error');
       setErr(msg);
       setTasks([]);
-      setOverview(null);
       setOrgs([]);
       setUsers([]);
       setPendingRequests([]);
+      setOrgReviewRequests([]);
     }
   }, [token, tc]);
 
@@ -242,6 +288,22 @@ export default function TasksPage() {
     }
   }
 
+  async function reviewOrgRequest(taskId: string, payload: OrgReviewPayload) {
+    if (!token) return;
+    if (!confirmAction(payload.approve ? '确认同意协办该活动吗？' : '确认拒绝协办该活动吗？')) return;
+    try {
+      await apiFetch(`/tasks/org/requests/${taskId}/review`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify(payload),
+      });
+      setOrgRejectReason((s) => ({ ...s, [taskId]: '' }));
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : tc('error'));
+    }
+  }
+
   async function createTask(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
@@ -255,9 +317,29 @@ export default function TasksPage() {
       setErr('请输入任务标题');
       return;
     }
+    if (!form.desc.trim()) {
+      setErr('请输入活动简介');
+      return;
+    }
 
-    if (!form.primaryOrgId.trim()) {
+    if (isOrgAdmin && !form.primaryOrgId.trim()) {
       setErr('请选择主组织');
+      return;
+    }
+    if (isLeagueAdmin && form.targetType === 'ORGS' && form.targetOrgIds.length === 0) {
+      setErr('请在参与对象中至少选择一个社团');
+      return;
+    }
+    if (isLeagueAdmin && form.targetType === 'GRADE' && !form.targetGrade.trim()) {
+      setErr('请选择目标年级');
+      return;
+    }
+    if (isLeagueAdmin && form.targetType === 'MAJOR' && !form.targetMajor.trim()) {
+      setErr('请选择目标专业');
+      return;
+    }
+    if (isLeagueAdmin && form.targetType === 'CLASS' && !form.targetClass.trim()) {
+      setErr('请选择目标班级');
       return;
     }
 
@@ -285,9 +367,24 @@ export default function TasksPage() {
           titleZh: form.title,
           titleEn: form.title,
           titleRu: form.title,
-          primaryOrgId: form.primaryOrgId,
+          descZh: form.desc,
+          descEn: form.desc,
+          descRu: form.desc,
+          primaryOrgId:
+            isLeagueAdmin && form.targetType === 'ORGS'
+              ? form.targetOrgIds[0]
+              : form.primaryOrgId || undefined,
           assigneeId: form.assigneeId || undefined,
-          relatedOrgIds: related.length ? related : undefined,
+          relatedOrgIds:
+            isLeagueAdmin && form.targetType === 'ORGS'
+              ? form.targetOrgIds.slice(1)
+              : related.length
+                ? related
+                : undefined,
+          targetType: isLeagueAdmin ? form.targetType : 'ORGS',
+          targetGrade: isLeagueAdmin ? form.targetGrade || undefined : undefined,
+          targetMajor: isLeagueAdmin ? form.targetMajor || undefined : undefined,
+          targetClass: isLeagueAdmin ? form.targetClass || undefined : undefined,
           startAt: new Date(form.startAt).toISOString(),
           endAt: new Date(form.endAt).toISOString(),
           dueAt: new Date(form.endAt).toISOString(),
@@ -297,9 +394,15 @@ export default function TasksPage() {
       const now = new Date();
       setForm({
         title: '',
+        desc: '',
         primaryOrgId: '',
         assigneeId: '',
         relatedOrgIds: '',
+        targetType: 'ORGS',
+        targetOrgIds: [],
+        targetGrade: '',
+        targetMajor: '',
+        targetClass: '',
         startAt: toLocalDateTimeValue(now),
         endAt: toLocalDateTimeValue(new Date(now.getTime() + 60 * 60 * 1000)),
       });
@@ -323,6 +426,40 @@ export default function TasksPage() {
   const isLeagueAdmin = me?.role === 'LEAGUE_ADMIN';
   const isOrgAdmin = !isLeagueAdmin && managedOrgIds.length > 0;
   const canCreate = isLeagueAdmin || isOrgAdmin;
+  const studentUsers = useMemo(
+    () => users.filter((u) => u.role === 'STUDENT'),
+    [users],
+  );
+  const gradeOptions = useMemo(
+    () =>
+      Array.from(new Set(studentUsers.map((u) => u.grade).filter((v): v is string => !!v))).sort(),
+    [studentUsers],
+  );
+  const majorOptions = useMemo(() => {
+    const rows = studentUsers.filter((u) => !form.targetGrade || u.grade === form.targetGrade);
+    return Array.from(new Set(rows.map((u) => u.major).filter((v): v is string => !!v))).sort();
+  }, [studentUsers, form.targetGrade]);
+  const classOptions = useMemo(() => {
+    const rows = studentUsers.filter(
+      (u) =>
+        (!form.targetGrade || u.grade === form.targetGrade) &&
+        (!form.targetMajor || u.major === form.targetMajor),
+    );
+    return Array.from(new Set(rows.map((u) => u.className).filter((v): v is string => !!v))).sort();
+  }, [studentUsers, form.targetGrade, form.targetMajor]);
+  const targetSummary = useMemo(() => {
+    if (form.targetType === 'ALL_STUDENTS') return '全体学生';
+    if (form.targetType === 'GRADE') return form.targetGrade ? `年级：${form.targetGrade}` : '未选择年级';
+    if (form.targetType === 'MAJOR') return form.targetMajor ? `专业：${form.targetMajor}` : '未选择专业';
+    if (form.targetType === 'CLASS') return form.targetClass ? `班级：${form.targetClass}` : '未选择班级';
+    if (form.targetOrgIds.length > 0) {
+      const names = form.targetOrgIds
+        .map((id) => triField((orgs.find((o) => o.id === id) ?? {}) as Record<string, unknown>, 'name', locale))
+        .filter(Boolean);
+      return names.length ? names.join('、') : '未选择社团';
+    }
+    return '未选择社团';
+  }, [form.targetType, form.targetGrade, form.targetMajor, form.targetClass, form.targetOrgIds, orgs, locale]);
   const recentOrgActivities = useMemo(() => {
     if (!isOrgAdmin) return [] as Task[];
     const now = Date.now();
@@ -398,7 +535,7 @@ export default function TasksPage() {
                         <span className={approvalBadgeClass(task.approvalStatus)}>
                           {approvalLabel(task.approvalStatus)}
                         </span>
-                        <span className="badge badge-blue">{sourceLabel(task.source)}</span>
+                        <span className="badge badge-blue">{sourceLabel(task, locale, isOrgAdmin)}</span>
                       </div>
 
                       <div className="topbar-muted" style={{ marginTop: 8 }}>
@@ -411,6 +548,12 @@ export default function TasksPage() {
 
                       <div className="topbar-muted" style={{ marginTop: 4 }}>
                         创建者：{String(creator?.name ?? creator?.email ?? '—')}
+                      </div>
+                      <div className="topbar-muted" style={{ marginTop: 4 }}>
+                        参与对象：{participantLabel(task, locale)}
+                      </div>
+                      <div className="topbar-muted" style={{ marginTop: 4 }}>
+                        活动简介：{triField(task, 'desc', locale) || '—'}
                       </div>
                       {task.approvalStatus === 'REJECTED' ? (
                         <div className="topbar-muted" style={{ marginTop: 4, color: '#b91c1c' }}>
@@ -511,22 +654,41 @@ export default function TasksPage() {
                   onChange={(e) => setForm((s) => ({ ...s, title: e.target.value }))}
                   required
                 />
+                <textarea
+                  rows={3}
+                  placeholder="活动简介"
+                  value={form.desc}
+                  onChange={(e) => setForm((s) => ({ ...s, desc: e.target.value }))}
+                  required
+                />
 
-                <label style={{ display: 'grid', gap: 6 }}>
-                  <span className="topbar-muted">主组织</span>
-                  <select
-                    value={form.primaryOrgId}
-                    onChange={(e) => setForm((s) => ({ ...s, primaryOrgId: e.target.value }))}
-                    required
-                  >
-                    <option value="">请选择主组织</option>
-                    {orgs.map((org) => (
-                      <option key={org.id} value={org.id}>
-                        {triField(org, 'name', locale)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {isLeagueAdmin ? (
+                  <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
+                    <div className="topbar-muted">参与对象（由略到详逐级选择）</div>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                      <span>{targetSummary}</span>
+                      <button type="button" onClick={() => setTargetPickerOpen(true)}>
+                        选择参与对象
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <label style={{ display: 'grid', gap: 6 }}>
+                    <span className="topbar-muted">主组织</span>
+                    <select
+                      value={form.primaryOrgId}
+                      onChange={(e) => setForm((s) => ({ ...s, primaryOrgId: e.target.value }))}
+                      required
+                    >
+                      <option value="">请选择主组织</option>
+                      {orgs.map((org) => (
+                        <option key={org.id} value={org.id}>
+                          {triField(org, 'name', locale)}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
 
                 <label style={{ display: 'grid', gap: 6 }}>
                   <span className="topbar-muted">执行人</span>
@@ -543,29 +705,31 @@ export default function TasksPage() {
                   </select>
                 </label>
 
-                <label>
-                  关联组织（多选）：
-                  <select
-                    multiple
-                    value={form.relatedOrgIds.split(',').filter(Boolean)}
-                    onChange={(e) => {
-                      const selected = Array.from(e.target.selectedOptions).map(
-                        (opt) => opt.value
-                      );
-                      setForm((s) => ({
-                        ...s,
-                        relatedOrgIds: selected.join(','),
-                      }));
-                    }}
-                    style={{ height: 120, width: '100%' }}
-                  >
-                    {orgs.map((org) => (
-                      <option key={org.id} value={org.id}>
-                        {triField(org, 'name', locale)}
-                      </option>
-                    ))}
-                  </select>
-                </label>
+                {isOrgAdmin ? (
+                  <label>
+                    共同活动社团（可选，多选后需协办社团与团委共同审核）：
+                    <select
+                      multiple
+                      value={form.relatedOrgIds.split(',').filter(Boolean)}
+                      onChange={(e) => {
+                        const selected = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                        setForm((s) => ({
+                          ...s,
+                          relatedOrgIds: selected.join(','),
+                        }));
+                      }}
+                      style={{ height: 120, width: '100%' }}
+                    >
+                      {orgs
+                        .filter((org) => org.id !== form.primaryOrgId)
+                        .map((org) => (
+                          <option key={org.id} value={org.id}>
+                            {triField(org, 'name', locale)}
+                          </option>
+                        ))}
+                    </select>
+                  </label>
+                ) : null}
 
                 <label style={{ display: 'grid', gap: 6 }}>
                   <span className="topbar-muted">开始时间</span>
@@ -616,7 +780,7 @@ export default function TasksPage() {
                     <li key={task.id} className="list-item">
                       <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                         <strong>{triField(task, 'title', locale)}</strong>
-                        <span className="badge badge-blue">{sourceLabel(task.source)}</span>
+                        <span className="badge badge-blue">{sourceLabel(task, locale, isOrgAdmin)}</span>
                       </div>
                       <div className="topbar-muted" style={{ marginTop: 6 }}>
                         开始：{formatDateTime(task.startAt)} · 结束：{formatDateTime(task.endAt ?? task.dueAt)}
@@ -683,6 +847,59 @@ export default function TasksPage() {
           </div>
         )}
 
+        {isOrgAdmin && (
+          <div className="page-section">
+            <div className="card-soft">
+              <h3 style={{ marginBottom: 12 }}>共同活动社团审核</h3>
+              {orgReviewRequests.length === 0 ? (
+                <div className="topbar-muted">暂无需要你协办审核的活动申请</div>
+              ) : (
+                <ul className="list-clean">
+                  {orgReviewRequests.map((row) => (
+                    <li key={row.id} className="list-item">
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                          <strong>{triField(row, 'title', locale)}</strong>
+                          <span className={approvalBadgeClass(row.approvalStatus)}>
+                            {approvalLabel(row.approvalStatus)}
+                          </span>
+                        </div>
+                        <div className="topbar-muted">
+                          发起社团：{triField((row.primaryOrg as Record<string, unknown>) ?? {}, 'name', locale) || '—'} ·
+                          简介：{triField(row, 'desc', locale) || '—'}
+                        </div>
+                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                          <input
+                            placeholder="拒绝原因（可选）"
+                            value={orgRejectReason[row.id] ?? ''}
+                            onChange={(e) => setOrgRejectReason((s) => ({ ...s, [row.id]: e.target.value }))}
+                            style={{ flex: 1, minWidth: 240 }}
+                          />
+                          <button type="button" onClick={() => reviewOrgRequest(row.id, { approve: true })}>
+                            同意协办
+                          </button>
+                          <button
+                            type="button"
+                            className="logout-btn"
+                            onClick={() =>
+                              reviewOrgRequest(row.id, {
+                                approve: false,
+                                reason: orgRejectReason[row.id] || undefined,
+                              })
+                            }
+                          >
+                            拒绝协办
+                          </button>
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        )}
+
         {isOrgAdmin ? (
           <>
             {renderTaskList('已安排', orgArrangedTasks, '暂无已安排活动/任务')}
@@ -692,17 +909,117 @@ export default function TasksPage() {
           renderTaskList('活动与任务列表', tasks, '暂无任务')
         )}
 
-        {me?.role === 'LEAGUE_ADMIN' && overview != null ? (
-          <div className="page-section">
-            <div className="card-soft">
-              <h2 style={{ marginBottom: 14 }}>{t('overview')}</h2>
-              <pre className="code-block">
-                {JSON.stringify(overview as Record<string, unknown>, null, 2)}
-              </pre>
-            </div>
-          </div>
-        ) : null}
       </div>
+
+      <Modal
+        open={targetPickerOpen}
+        title="选择参与对象"
+        onClose={() => setTargetPickerOpen(false)}
+        width={760}
+      >
+        <div style={{ display: 'grid', gap: 10 }}>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span className="topbar-muted">第一步：选择范围</span>
+            <select
+              value={form.targetType}
+              onChange={(e) =>
+                setForm((s) => ({
+                  ...s,
+                  targetType: e.target.value as typeof s.targetType,
+                  targetGrade: '',
+                  targetMajor: '',
+                  targetClass: '',
+                }))
+              }
+            >
+              <option value="ORGS">指定社团</option>
+              <option value="ALL_STUDENTS">全体学生</option>
+              <option value="GRADE">指定年级</option>
+              <option value="MAJOR">指定专业</option>
+              <option value="CLASS">指定班级</option>
+            </select>
+          </label>
+
+          {form.targetType === 'ORGS' ? (
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">第二步：选择社团（多选）</span>
+              <select
+                multiple
+                value={form.targetOrgIds}
+                onChange={(e) => {
+                  const selected = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                  setForm((s) => ({ ...s, targetOrgIds: selected }));
+                }}
+                style={{ height: 160, width: '100%' }}
+              >
+                {orgs.map((org) => (
+                  <option key={org.id} value={org.id}>
+                    {triField(org, 'name', locale)}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {form.targetType === 'GRADE' || form.targetType === 'MAJOR' || form.targetType === 'CLASS' ? (
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">第二步：选择年级</span>
+              <select
+                value={form.targetGrade}
+                onChange={(e) =>
+                  setForm((s) => ({ ...s, targetGrade: e.target.value, targetMajor: '', targetClass: '' }))
+                }
+              >
+                <option value="">请选择年级</option>
+                {gradeOptions.map((g) => (
+                  <option key={g} value={g}>
+                    {g}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {form.targetType === 'MAJOR' || form.targetType === 'CLASS' ? (
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">第三步：选择专业</span>
+              <select
+                value={form.targetMajor}
+                onChange={(e) => setForm((s) => ({ ...s, targetMajor: e.target.value, targetClass: '' }))}
+              >
+                <option value="">请选择专业</option>
+                {majorOptions.map((m) => (
+                  <option key={m} value={m}>
+                    {m}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          {form.targetType === 'CLASS' ? (
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">第四步：选择班级</span>
+              <select
+                value={form.targetClass}
+                onChange={(e) => setForm((s) => ({ ...s, targetClass: e.target.value }))}
+              >
+                <option value="">请选择班级</option>
+                {classOptions.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </label>
+          ) : null}
+
+          <div className="topbar-muted">当前选择：{targetSummary}</div>
+          <button type="button" onClick={() => setTargetPickerOpen(false)}>
+            确认参与对象
+          </button>
+        </div>
+      </Modal>
     </div>
   );
 }

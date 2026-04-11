@@ -36,6 +36,20 @@ enum TaskSource {
   LEAGUE_PUBLISHED
 }
 
+enum TaskTargetType {
+  ORGS
+  ALL_STUDENTS
+  GRADE
+  MAJOR
+  CLASS
+}
+
+enum OrgReviewStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 enum PlanSource {
   PERSONAL
   ORG_TASK
@@ -61,15 +75,21 @@ model User {
   studentId    String?  @unique
   idCard       String?  @unique
   phone        String?
+  grade        String?
+  major        String?
+  className    String?
+  isOrgAccount Boolean  @default(false)
   role         UserRole @default(STUDENT)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   memberships       OrganizationMember[]
   ledOrganizations  Organization[]       @relation("OrganizationLeader")
+  adminOrganizations Organization[]      @relation("OrganizationAdminUser")
   createdTasks      Task[]               @relation("TaskCreator")
   assignedTasks     Task[]               @relation("TaskAssignee")
   reviewedTasks     Task[]               @relation("TaskReviewer")
+  reviewedOrgTasks  TaskOrgReview[]      @relation("TaskOrgReviewer")
   plans             PersonalPlan[]
   scheduleEntries   ScheduleEntry[]
   profile           Profile?
@@ -88,11 +108,16 @@ model Organization {
   typeEn        String
   typeRu        String
   leaderUserId  String?
+  adminUserId   String?
+  adminAccount  String?  @unique
+  adminPassword String?  @default("")
   createdAt     DateTime @default(now())
 
   members      OrganizationMember[]
   tasks        Task[]               @relation("TaskPrimaryOrg")
   taskLinks    TaskOrganization[]
+  orgReviews   TaskOrgReview[]
+  adminUser    User?                @relation("OrganizationAdminUser", fields: [adminUserId], references: [id], onDelete: SetNull)
   leader       User?                @relation("OrganizationLeader", fields: [leaderUserId], references: [id], onDelete: SetNull)
 }
 
@@ -126,6 +151,10 @@ model Task {
   status      TaskStatus @default(TODO)
   approvalStatus TaskApprovalStatus @default(APPROVED)
   source      TaskSource @default(LEAGUE_PUBLISHED)
+  targetType  TaskTargetType @default(ORGS)
+  targetGrade String?
+  targetMajor String?
+  targetClass String?
   reviewNote  String     @default("")
   approvedAt  DateTime?
   reviewedById String?
@@ -139,6 +168,7 @@ model Task {
   reviewedBy   User?              @relation("TaskReviewer", fields: [reviewedById], references: [id])
   primaryOrg   Organization?      @relation("TaskPrimaryOrg", fields: [primaryOrgId], references: [id])
   relatedOrgs   TaskOrganization[]
+  orgReviews   TaskOrgReview[]
   notifications Notification[]
 }
 
@@ -148,6 +178,21 @@ model TaskOrganization {
 
   task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+
+  @@id([taskId, organizationId])
+}
+
+model TaskOrgReview {
+  taskId         String
+  organizationId String
+  status         OrgReviewStatus @default(PENDING)
+  reviewerId     String?
+  reviewedAt     DateTime?
+  reason         String          @default("")
+
+  task         Task         @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Cascade)
+  reviewer     User?        @relation("TaskOrgReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
 
   @@id([taskId, organizationId])
 }
@@ -240,4 +285,16 @@ model Notification {
 
   user User  @relation(fields: [userId], references: [id], onDelete: Cascade)
   task Task? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+}
+
+model GradeOption {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
+}
+
+model MajorOption {
+  id        String   @id @default(uuid())
+  name      String   @unique
+  createdAt DateTime @default(now())
 }

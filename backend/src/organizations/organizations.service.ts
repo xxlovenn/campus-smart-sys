@@ -1,5 +1,5 @@
 import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { OrganizationMemberRole, UserRole } from '@prisma/client';
+import { OrganizationMemberRole, OrganizationStatus, UserRole } from '@prisma/client';
 import * as bcrypt from 'bcrypt';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthorizationService } from '../authorization/authorization.service';
@@ -10,6 +10,29 @@ export class OrganizationsService {
     private prisma: PrismaService,
     private authorization: AuthorizationService,
   ) {}
+
+  private async appendChangeLog(params: {
+    action: string;
+    entityId: string;
+    organizationId?: string | null;
+    actorId?: string | null;
+    detailZh?: string;
+    detailEn?: string;
+    detailRu?: string;
+  }) {
+    await (this.prisma.activityChangeLog as any).create({
+      data: {
+        logType: 'ORGANIZATION',
+        action: params.action,
+        entityId: params.entityId,
+        organizationId: params.organizationId ?? params.entityId,
+        actorId: params.actorId ?? null,
+        detailZh: params.detailZh ?? '',
+        detailEn: params.detailEn ?? '',
+        detailRu: params.detailRu ?? '',
+      },
+    });
+  }
 
   private async generateUniqueOrgAccount(prefix = 'org') {
     while (true) {
@@ -186,6 +209,16 @@ export class OrganizationsService {
       },
     });
 
+    await this.appendChangeLog({
+      action: 'ORGANIZATION_CREATED',
+      entityId: org.id,
+      organizationId: org.id,
+      actorId: org.leaderUserId ?? adminUser.id,
+      detailZh: `创建组织：${org.nameZh}`,
+      detailEn: `Organization created: ${org.nameEn}`,
+      detailRu: `Создана организация: ${org.nameRu}`,
+    });
+
     return org;
   }
 
@@ -283,7 +316,55 @@ export class OrganizationsService {
       },
     });
 
+    await this.appendChangeLog({
+      action: 'ORGANIZATION_UPDATED',
+      entityId: orgId,
+      organizationId: orgId,
+      actorId: userId,
+      detailZh: `更新组织信息：${data.nameZh}`,
+      detailEn: `Updated organization profile: ${data.nameEn}`,
+      detailRu: `Обновлена информация организации: ${data.nameRu}`,
+    });
+
     return this.detail(orgId, userId, role);
+  }
+
+  async updateStatus(orgId: string, status: OrganizationStatus, userId: string, role: UserRole) {
+    await this.assertManageScope(userId, role, orgId);
+    const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
+    if (!org) throw new NotFoundException('Organization not found');
+    if (org.status === status) return this.detail(orgId, userId, role);
+
+    await this.prisma.organization.update({
+      where: { id: orgId },
+      data: {
+        status,
+        statusChangedAt: new Date(),
+        statusChangedById: userId,
+      },
+    });
+    await this.appendChangeLog({
+      action: 'ORGANIZATION_STATUS_CHANGED',
+      entityId: orgId,
+      organizationId: orgId,
+      actorId: userId,
+      detailZh: `组织状态变更为：${status === OrganizationStatus.ACTIVE ? '启用' : '暂停'}`,
+      detailEn: `Organization status changed to ${status}`,
+      detailRu: `Статус организации изменен на ${status}`,
+    });
+    return this.detail(orgId, userId, role);
+  }
+
+  async changeLogs(orgId: string, userId: string, role: UserRole, limit = 20) {
+    await this.assertManageScope(userId, role, orgId);
+    return (this.prisma.activityChangeLog as any).findMany({
+      where: { organizationId: orgId, logType: 'ORGANIZATION' },
+      include: {
+        actor: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: Math.max(1, Math.min(100, limit)),
+    });
   }
 
   async addMember(
@@ -322,6 +403,16 @@ export class OrganizationsService {
       },
     });
 
+    await this.appendChangeLog({
+      action: 'ORGANIZATION_MEMBER_ADDED',
+      entityId: orgId,
+      organizationId: orgId,
+      actorId: userId,
+      detailZh: `添加组织成员：${user.name}`,
+      detailEn: `Added member: ${user.name}`,
+      detailRu: `Добавлен участник: ${user.name}`,
+    });
+
     return this.detail(orgId, userId, role);
   }
 
@@ -335,12 +426,33 @@ export class OrganizationsService {
     await this.prisma.organizationMember.deleteMany({
       where: { organizationId: orgId, userId: memberUserId },
     });
+    const member = await this.prisma.user.findUnique({
+      where: { id: memberUserId },
+      select: { name: true, email: true },
+    });
+    await this.appendChangeLog({
+      action: 'ORGANIZATION_MEMBER_REMOVED',
+      entityId: orgId,
+      organizationId: orgId,
+      actorId: operatorUserId,
+      detailZh: `移除组织成员：${member?.name ?? member?.email ?? memberUserId}`,
+      detailEn: `Removed member: ${member?.name ?? member?.email ?? memberUserId}`,
+      detailRu: `Удален участник: ${member?.name ?? member?.email ?? memberUserId}`,
+    });
     return this.detail(orgId, operatorUserId, role);
   }
 
   async remove(orgId: string, operatorName: string) {
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
     if (!org) throw new NotFoundException('Organization not found');
+    await this.appendChangeLog({
+      action: 'ORGANIZATION_DELETED',
+      entityId: orgId,
+      organizationId: orgId,
+      detailZh: `删除组织：${org.nameZh}（操作者：${operatorName}）`,
+      detailEn: `Deleted organization: ${org.nameEn} (operator: ${operatorName})`,
+      detailRu: `Удалена организация: ${org.nameRu} (оператор: ${operatorName})`,
+    });
     await this.prisma.organizationMember.deleteMany({ where: { organizationId: orgId } });
     await this.prisma.organization.delete({ where: { id: orgId } });
     return { ok: true, operatorName };

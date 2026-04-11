@@ -22,6 +22,8 @@ type Org = {
   leader?: { id: string; name?: string; email?: string; studentId?: string | null } | null;
   adminAccount?: string | null;
   adminPassword?: string | null;
+  status?: 'ACTIVE' | 'PAUSED';
+  statusChangedAt?: string | null;
   _count?: { members: number };
 };
 type Me = { role: string; managedOrgIds?: string[] };
@@ -47,11 +49,22 @@ type OrgDetail = {
   leader?: { id: string; name?: string; email?: string; studentId?: string | null } | null;
   adminAccount?: string | null;
   adminPassword?: string | null;
+  status?: 'ACTIVE' | 'PAUSED';
+  statusChangedAt?: string | null;
   members: Array<{
     userId: string;
     roleZh: string;
     user: { id: string; name: string; email: string; studentId?: string | null };
   }>;
+};
+type OrgChangeLog = {
+  id: string;
+  action: string;
+  detailZh?: string;
+  detailEn?: string;
+  detailRu?: string;
+  createdAt?: string;
+  actor?: { name?: string; email?: string } | null;
 };
 type CreatedCredential = {
   orgName: string;
@@ -95,6 +108,7 @@ export default function OrgsPage() {
   const [err, setErr] = useState<string | null>(null);
   const [credEdit, setCredEdit] = useState<Record<string, { account: string; password: string }>>({});
   const [createdCredential, setCreatedCredential] = useState<CreatedCredential | null>(null);
+  const [orgLogs, setOrgLogs] = useState<OrgChangeLog[]>([]);
 
   const isLeagueAdmin = me?.role === 'LEAGUE_ADMIN';
   const isOrgAdmin = !isLeagueAdmin && (me?.managedOrgIds ?? []).length > 0;
@@ -206,6 +220,27 @@ export default function OrgsPage() {
           password: d.adminPassword || '',
         },
       }));
+      const logs = await apiFetch<OrgChangeLog[]>(`/organizations/${id}/change-logs?limit=20`, { token });
+      setOrgLogs(Array.isArray(logs) ? logs : []);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : tc('error'));
+    }
+  }
+
+  async function updateOrgStatus(status: 'ACTIVE' | 'PAUSED') {
+    if (!token || !detail) return;
+    const isPause = status === 'PAUSED';
+    if (!confirmAction(isPause ? '确认暂停该组织吗？' : '确认启用该组织吗？')) return;
+    try {
+      const d = await apiFetch<OrgDetail>(`/organizations/${detail.id}/status`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({ status }),
+      });
+      setDetail(d);
+      const logs = await apiFetch<OrgChangeLog[]>(`/organizations/${detail.id}/change-logs?limit=20`, { token });
+      setOrgLogs(Array.isArray(logs) ? logs : []);
+      await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : tc('error'));
     }
@@ -251,6 +286,10 @@ export default function OrgsPage() {
       });
       setDetail(d);
       await load();
+      if (detail) {
+        const logs = await apiFetch<OrgChangeLog[]>(`/organizations/${detail.id}/change-logs?limit=20`, { token });
+        setOrgLogs(Array.isArray(logs) ? logs : []);
+      }
       setErr(null);
     } catch (e) {
       setErr(e instanceof Error ? e.message : tc('error'));
@@ -274,6 +313,10 @@ export default function OrgsPage() {
       setAddMemberUserId('');
       setAddMemberRoleZh('成员');
       load();
+      if (detail) {
+        const logs = await apiFetch<OrgChangeLog[]>(`/organizations/${detail.id}/change-logs?limit=20`, { token });
+        setOrgLogs(Array.isArray(logs) ? logs : []);
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : tc('error'));
     }
@@ -303,6 +346,10 @@ export default function OrgsPage() {
       });
       setDetail(d);
       load();
+      if (detail) {
+        const logs = await apiFetch<OrgChangeLog[]>(`/organizations/${detail.id}/change-logs?limit=20`, { token });
+        setOrgLogs(Array.isArray(logs) ? logs : []);
+      }
     } catch (e) {
       setErr(e instanceof Error ? e.message : tc('error'));
     }
@@ -499,6 +546,9 @@ export default function OrgsPage() {
                       {triField(o as unknown as Record<string, unknown>, 'type', locale)}
                       {typeof o._count?.members === 'number' ? ` · 成员 ${o._count.members}` : ''}
                     </span>
+                    <span className={`badge ${o.status === 'PAUSED' ? 'badge-red' : 'badge-green'}`}>
+                      {o.status === 'PAUSED' ? t('statusPaused') : t('statusActive')}
+                    </span>
                     {isLeagueAdmin ? (
                       <span className="topbar-muted">
                         账号：{o.adminAccount || '—'} · 密码：{o.adminPassword || '—'}
@@ -623,6 +673,33 @@ export default function OrgsPage() {
               保存组织信息
             </button>
           </div>
+          <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
+            <h4 style={{ margin: 0 }}>{t('statusTitle')}</h4>
+            <div className="topbar-muted">
+              当前状态：
+              <strong style={{ marginLeft: 6 }}>
+                {detail.status === 'PAUSED' ? t('statusPaused') : t('statusActive')}
+              </strong>
+              {detail.statusChangedAt ? ` · 最近变更：${new Date(detail.statusChangedAt).toLocaleString()}` : ''}
+            </div>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                type="button"
+                onClick={() => updateOrgStatus('ACTIVE')}
+                disabled={detail.status === 'ACTIVE'}
+              >
+                {t('enableOrg')}
+              </button>
+              <button
+                type="button"
+                className="logout-btn"
+                onClick={() => updateOrgStatus('PAUSED')}
+                disabled={detail.status === 'PAUSED'}
+              >
+                {t('pauseOrg')}
+              </button>
+            </div>
+          </div>
           <div className="topbar-muted">简介：{detail.descriptionZh || '—'}</div>
           {isLeagueAdmin ? (
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
@@ -721,6 +798,31 @@ export default function OrgsPage() {
             <button type="button" onClick={addMember}>
               添加
             </button>
+          </div>
+          <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
+            <h4 style={{ margin: 0 }}>{t('changeLogsTitle')}</h4>
+            {orgLogs.length === 0 ? (
+              <div className="topbar-muted">{t('changeLogsEmpty')}</div>
+            ) : (
+              <ul className="audit-timeline">
+                {orgLogs.map((row) => (
+                  <li key={row.id} className="audit-timeline-item">
+                    <span className="audit-timeline-dot audit-timeline-dot-pending" />
+                    <div className="audit-timeline-main">
+                      <div className="audit-timeline-head">
+                        <strong>{triField(row as unknown as Record<string, unknown>, 'detail', locale) || row.action}</strong>
+                        <span className="topbar-muted">
+                          {row.createdAt ? new Date(row.createdAt).toLocaleString() : '—'}
+                        </span>
+                      </div>
+                      <div className="topbar-muted" style={{ fontSize: 12 }}>
+                        {t('operator')}：{row.actor?.name || row.actor?.email || 'System'}
+                      </div>
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       ) : null}

@@ -74,6 +74,32 @@ type RequestReviewPayload = {
   reason?: string;
 };
 type OrgReviewPayload = { approve: boolean; reason?: string };
+type TimelinePlanRow = Record<string, unknown> & {
+  id: string;
+  titleZh?: string;
+  titleEn?: string;
+  titleRu?: string;
+  dueAt?: string;
+};
+type ScheduleEntryRow = Record<string, unknown> & {
+  id: string;
+  courseZh?: string;
+  courseEn?: string;
+  courseRu?: string;
+  weekday?: number;
+  startTime?: string;
+  endTime?: string;
+  source?: string;
+};
+type TaskChangeLog = {
+  id: string;
+  action: string;
+  detailZh?: string;
+  detailEn?: string;
+  detailRu?: string;
+  createdAt?: string;
+  actor?: { name?: string; email?: string } | null;
+};
 
 function toLocalDateTimeValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -85,15 +111,18 @@ function toLocalDateTimeValue(date: Date) {
   return `${yyyy}-${mm}-${dd}T${hh}:${mi}`;
 }
 
-function formatDateTime(value: unknown) {
+function formatDateTime(value: unknown, locale = 'default') {
   if (!value) return '—';
   const date = new Date(String(value));
   if (Number.isNaN(date.getTime())) return String(value);
-
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return `${date.getFullYear()}年${pad(date.getMonth() + 1)}月${pad(date.getDate())}日 ${pad(
-    date.getHours(),
-  )}时${pad(date.getMinutes())}分`;
+  return new Intl.DateTimeFormat(locale, {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  }).format(date);
 }
 
 function statusBadgeClass(status: string) {
@@ -119,13 +148,6 @@ function approvalLabel(approval?: string) {
   if (approval === 'APPROVED') return '已通过';
   if (approval === 'REJECTED') return '已驳回';
   return '待审核';
-}
-
-function taskStatusLabel(status?: string) {
-  if (status === 'IN_PROGRESS') return '进行中';
-  if (status === 'DONE') return '已完成';
-  if (status === 'BLOCKED') return '受阻';
-  return '待处理';
 }
 
 function sourceLabel(task: Task, locale: string, isOrgAdmin: boolean) {
@@ -163,9 +185,21 @@ export default function TasksPage() {
   const [users, setUsers] = useState<UserOption[]>([]);
   const [pendingRequests, setPendingRequests] = useState<Task[]>([]);
   const [orgReviewRequests, setOrgReviewRequests] = useState<Task[]>([]);
+  const [leaguePlans, setLeaguePlans] = useState<TimelinePlanRow[]>([]);
+  const [leagueSchedule, setLeagueSchedule] = useState<ScheduleEntryRow[]>([]);
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
   const [orgRejectReason, setOrgRejectReason] = useState<Record<string, string>>({});
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
+  const [taskLogs, setTaskLogs] = useState<TaskChangeLog[]>([]);
+  const [editTarget, setEditTarget] = useState<Task | null>(null);
+  const [editForm, setEditForm] = useState({
+    title: '',
+    desc: '',
+    assigneeId: '',
+    startAt: '',
+    endAt: '',
+    relatedOrgIds: [] as string[],
+  });
   const [err, setErr] = useState<string | null>(null);
 
   const [form, setForm] = useState(() => {
@@ -213,16 +247,39 @@ export default function TasksPage() {
       setUsers(Array.isArray(userList) ? userList : []);
 
       if (m.role === 'LEAGUE_ADMIN') {
-        const req = await apiFetch<Task[]>('/tasks/admin/requests', { token });
-        setPendingRequests(Array.isArray(req) ? req : []);
+        const [reqRes, plansRes, scheduleRes] = await Promise.allSettled([
+          apiFetch<Task[]>('/tasks/admin/requests', { token }),
+          apiFetch<TimelinePlanRow[]>('/plans/timeline', { token }),
+          apiFetch<{ entries?: ScheduleEntryRow[] }>('/schedule', { token }),
+        ]);
+        setPendingRequests(
+          reqRes.status === 'fulfilled' && Array.isArray(reqRes.value) ? reqRes.value : [],
+        );
+        setLeaguePlans(
+          plansRes.status === 'fulfilled' && Array.isArray(plansRes.value) ? plansRes.value : [],
+        );
+        setLeagueSchedule(
+          scheduleRes.status === 'fulfilled' && Array.isArray(scheduleRes.value?.entries)
+            ? scheduleRes.value.entries
+            : [],
+        );
         setOrgReviewRequests([]);
       } else if (m.role === 'ORG_ADMIN' || (m.managedOrgIds ?? []).length > 0) {
-        const orgReq = await apiFetch<Task[]>('/tasks/org/requests', { token });
+        const [orgReq, logs] = await Promise.all([
+          apiFetch<Task[]>('/tasks/org/requests', { token }),
+          apiFetch<TaskChangeLog[]>('/tasks/change-logs?limit=20', { token }),
+        ]);
         setOrgReviewRequests(Array.isArray(orgReq) ? orgReq : []);
+        setTaskLogs(Array.isArray(logs) ? logs : []);
         setPendingRequests([]);
+        setLeaguePlans([]);
+        setLeagueSchedule([]);
       } else {
         setPendingRequests([]);
         setOrgReviewRequests([]);
+        setLeaguePlans([]);
+        setLeagueSchedule([]);
+        setTaskLogs([]);
       }
     } catch (e) {
       const msg = e instanceof Error ? e.message : tc('error');
@@ -232,6 +289,9 @@ export default function TasksPage() {
       setUsers([]);
       setPendingRequests([]);
       setOrgReviewRequests([]);
+      setLeaguePlans([]);
+      setLeagueSchedule([]);
+      setTaskLogs([]);
     }
   }, [token, tc]);
 
@@ -413,10 +473,64 @@ export default function TasksPage() {
     }
   }
 
+  function openEditTask(task: Task) {
+    setEditTarget(task);
+    setEditForm({
+      title: String(triField(task, 'title', locale) || ''),
+      desc: String(triField(task, 'desc', locale) || ''),
+      assigneeId: String(task.assigneeId ?? ''),
+      startAt: task.startAt ? toLocalDateTimeValue(new Date(String(task.startAt))) : '',
+      endAt: task.endAt ? toLocalDateTimeValue(new Date(String(task.endAt))) : '',
+      relatedOrgIds: relatedOrgIds(task),
+    });
+  }
+
+  async function submitEditTask() {
+    if (!token || !editTarget) return;
+    if (!editForm.title.trim() || !editForm.desc.trim()) {
+      setErr('请填写活动标题与简介');
+      return;
+    }
+    if (!editForm.startAt || !editForm.endAt) {
+      setErr('请填写开始和结束时间');
+      return;
+    }
+    if (!confirmAction('确认保存活动修改并重新提交审核吗？')) return;
+    try {
+      await apiFetch(`/tasks/${editTarget.id}`, {
+        method: 'PATCH',
+        token,
+        body: JSON.stringify({
+          titleZh: editForm.title.trim(),
+          titleEn: editForm.title.trim(),
+          titleRu: editForm.title.trim(),
+          descZh: editForm.desc.trim(),
+          descEn: editForm.desc.trim(),
+          descRu: editForm.desc.trim(),
+          assigneeId: editForm.assigneeId || undefined,
+          startAt: new Date(editForm.startAt).toISOString(),
+          endAt: new Date(editForm.endAt).toISOString(),
+          dueAt: new Date(editForm.endAt).toISOString(),
+          relatedOrgIds: editForm.relatedOrgIds,
+        }),
+      });
+      setEditTarget(null);
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : tc('error'));
+    }
+  }
+
   const managedOrgIds = useMemo(() => me?.managedOrgIds ?? [], [me?.managedOrgIds]);
   const isLeagueAdmin = me?.role === 'LEAGUE_ADMIN';
   const isOrgAdmin = !isLeagueAdmin && managedOrgIds.length > 0;
   const canCreate = isLeagueAdmin || isOrgAdmin;
+  const localizedTaskStatus = (status?: string) => {
+    if (status === 'IN_PROGRESS') return t('statusInProgress');
+    if (status === 'DONE') return t('statusDone');
+    if (status === 'BLOCKED') return t('statusBlocked');
+    return t('statusTodo');
+  };
   const studentUsers = useMemo(
     () => users.filter((u) => u.role === 'STUDENT'),
     [users],
@@ -490,6 +604,28 @@ export default function TasksPage() {
       ),
     [orgScopedTasks],
   );
+  const leagueMergedArrangements = useMemo(() => {
+    if (!isLeagueAdmin) return [] as Array<{ id: string; title: string; time: string; kind: string }>;
+    const taskRows = tasks.map((task) => ({
+      id: `task-${task.id}`,
+      title: triField(task, 'title', locale) || '—',
+      time: `开始：${formatDateTime(task.startAt)} · 结束：${formatDateTime(task.endAt ?? task.dueAt)}`,
+      kind: '活动任务',
+    }));
+    const planRows = leaguePlans.map((row) => ({
+      id: `plan-${row.id}`,
+      title: triField(row, 'title', locale) || '—',
+      time: `截止：${formatDateTime(row.dueAt)}`,
+      kind: '校级日程',
+    }));
+    const scheduleRows = leagueSchedule.map((row) => ({
+      id: `schedule-${row.id}`,
+      title: triField(row, 'course', locale) || '—',
+      time: `周${String(row.weekday ?? '—')} · ${String(row.startTime ?? '--:--')} - ${String(row.endTime ?? '--:--')}`,
+      kind: '校级课务安排',
+    }));
+    return [...taskRows, ...planRows, ...scheduleRows].slice(0, 12);
+  }, [isLeagueAdmin, leaguePlans, leagueSchedule, locale, tasks]);
 
   if (!ready || !token) {
     return (
@@ -515,6 +651,10 @@ export default function TasksPage() {
               const mutableByOrgAdmin = managed && task.source === 'ORG_REQUEST';
               const canChangeStatus =
                 approved && (isLeagueAdmin || (isOrgAdmin ? mutableByOrgAdmin : false));
+              const canEdit =
+                isOrgAdmin &&
+                mutableByOrgAdmin &&
+                (task.approvalStatus === 'PENDING_APPROVAL' || task.approvalStatus === 'REJECTED');
               const canDelete = isLeagueAdmin || (isOrgAdmin ? mutableByOrgAdmin : false);
 
               return (
@@ -570,6 +710,11 @@ export default function TasksPage() {
                     </div>
 
                     <div style={{ display: 'grid', gap: 10, minWidth: 180 }}>
+                      {canEdit ? (
+                        <button type="button" onClick={() => openEditTask(task)}>
+                          {t('editActivity')}
+                        </button>
+                      ) : null}
                       <label style={{ display: 'grid', gap: 6 }}>
                         <span className="topbar-muted">{tc('status')}</span>
                         <select
@@ -648,7 +793,7 @@ export default function TasksPage() {
                         <article key={task.id} className="task-flow-card">
                           <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
                             <strong>{triField(task, 'title', locale)}</strong>
-                            <span className={statusBadgeClass(task.status)}>{taskStatusLabel(task.status)}</span>
+                            <span className={statusBadgeClass(task.status)}>{localizedTaskStatus(task.status)}</span>
                           </div>
                           <div className="topbar-muted" style={{ marginTop: 6, fontSize: 13 }}>
                             负责人：{String(assignee?.name ?? assignee?.email ?? creator?.name ?? creator?.email ?? '未指定')}
@@ -657,7 +802,7 @@ export default function TasksPage() {
                             截止：{formatDateTime(task.endAt ?? task.dueAt)}
                           </div>
                           <div className="topbar-muted" style={{ marginTop: 4, fontSize: 13 }}>
-                            当前状态：{taskStatusLabel(task.status)}
+                            当前状态：{localizedTaskStatus(task.status)}
                           </div>
 
                           <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
@@ -705,12 +850,12 @@ export default function TasksPage() {
   return (
     <div className="page-container">
       <div className="page-card">
-        <h1 className="page-title">社团活动</h1>
+        <h1 className="page-title">{t('orgActivityTitle')}</h1>
         <p className="page-subtitle">
           {isLeagueAdmin
             ? '审核社团活动申请并发布活动安排。'
             : isOrgAdmin
-            ? '社团活动先提交申请，经团委审核通过后生效并同步成员日程。'
+            ? t('orgActivityHint')
             : '查看已发布到你所属组织的活动安排与任务。'}
         </p>
 
@@ -736,6 +881,32 @@ export default function TasksPage() {
             </button>
           </div>
         </div>
+
+        {isLeagueAdmin ? (
+          <div className="page-section">
+            <div className="card-soft" style={{ display: 'grid', gap: 10 }}>
+              <h3 style={{ marginBottom: 4 }}>活动安排与任务中心（已合并）</h3>
+              <p className="topbar-muted" style={{ marginTop: 0 }}>
+                已将团委任务与校级日程合并展示，统一在本板块进行发布、修改与排期查看。
+              </p>
+              {leagueMergedArrangements.length === 0 ? (
+                <div className="topbar-muted">暂无可展示安排</div>
+              ) : (
+                <ul className="list-clean">
+                  {leagueMergedArrangements.map((row) => (
+                    <li key={row.id} className="list-item">
+                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                        <strong>{row.title}</strong>
+                        <span className="badge badge-blue">{row.kind}</span>
+                      </div>
+                      <div className="topbar-muted" style={{ marginTop: 6 }}>{row.time}</div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ) : null}
 
         {canCreate && (
           <div className="page-section">
@@ -893,6 +1064,36 @@ export default function TasksPage() {
           </div>
         )}
 
+        {isOrgAdmin ? (
+          <div className="page-section">
+            <div className="card-soft">
+              <h3 style={{ marginBottom: 12 }}>{t('changeLogsTitle')}</h3>
+              {taskLogs.length === 0 ? (
+                <div className="topbar-muted">{t('changeLogsEmpty')}</div>
+              ) : (
+                <ul className="audit-timeline">
+                  {taskLogs.map((row) => (
+                    <li key={row.id} className="audit-timeline-item">
+                      <span className="audit-timeline-dot audit-timeline-dot-pending" />
+                      <div className="audit-timeline-main">
+                        <div className="audit-timeline-head">
+                          <strong>{triField(row as unknown as Record<string, unknown>, 'detail', locale) || row.action}</strong>
+                          <span className="topbar-muted">
+                            {row.createdAt ? new Date(row.createdAt).toLocaleString(locale) : '—'}
+                          </span>
+                        </div>
+                        <div className="topbar-muted" style={{ fontSize: 12 }}>
+                          {t('operator')}：{row.actor?.name || row.actor?.email || 'System'}
+                        </div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ) : null}
+
         {isLeagueAdmin && (
           <div className="page-section">
             <div className="card-soft">
@@ -1010,6 +1211,82 @@ export default function TasksPage() {
         )}
 
       </div>
+
+      <Modal
+        open={!!editTarget}
+        title={t('editModalTitle')}
+        onClose={() => setEditTarget(null)}
+        width={760}
+      >
+        {editTarget ? (
+          <div style={{ display: 'grid', gap: 10 }}>
+            <input
+              placeholder="活动标题"
+              value={editForm.title}
+              onChange={(e) => setEditForm((s) => ({ ...s, title: e.target.value }))}
+            />
+            <textarea
+              rows={3}
+              placeholder="活动简介"
+              value={editForm.desc}
+              onChange={(e) => setEditForm((s) => ({ ...s, desc: e.target.value }))}
+            />
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">执行人</span>
+              <select
+                value={editForm.assigneeId}
+                onChange={(e) => setEditForm((s) => ({ ...s, assigneeId: e.target.value }))}
+              >
+                <option value="">暂不指定</option>
+                {users.map((user) => (
+                  <option key={user.id} value={user.id}>
+                    {user.name || user.email || user.id}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">共同活动社团（可选）</span>
+              <select
+                multiple
+                value={editForm.relatedOrgIds}
+                onChange={(e) => {
+                  const selected = Array.from(e.target.selectedOptions).map((opt) => opt.value);
+                  setEditForm((s) => ({ ...s, relatedOrgIds: selected }));
+                }}
+                style={{ height: 120, width: '100%' }}
+              >
+                {orgs
+                  .filter((org) => org.id !== String(editTarget.primaryOrgId ?? ''))
+                  .map((org) => (
+                    <option key={org.id} value={org.id}>
+                      {triField(org, 'name', locale)}
+                    </option>
+                  ))}
+              </select>
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">开始时间</span>
+              <input
+                type="datetime-local"
+                value={editForm.startAt}
+                onChange={(e) => setEditForm((s) => ({ ...s, startAt: e.target.value }))}
+              />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">结束时间</span>
+              <input
+                type="datetime-local"
+                value={editForm.endAt}
+                onChange={(e) => setEditForm((s) => ({ ...s, endAt: e.target.value }))}
+              />
+            </label>
+            <button type="button" onClick={submitEditTask}>
+              {t('saveAndResubmit')}
+            </button>
+          </div>
+        ) : null}
+      </Modal>
 
       <Modal
         open={targetPickerOpen}

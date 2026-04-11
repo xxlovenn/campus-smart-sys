@@ -322,13 +322,33 @@
     "new": "New task",
     "assignee": "Assignee user id (optional)",
     "primaryOrg": "Primary org id",
-    "relatedOrgs": "Related org ids (comma-separated)"
+    "relatedOrgs": "Related org ids (comma-separated)",
+    "orgActivityTitle": "Organization Activities",
+    "orgActivityHint": "Organization activity requests take effect after league approval and sync to member schedules.",
+    "editActivity": "Edit activity",
+    "editModalTitle": "Edit activity request",
+    "saveAndResubmit": "Save and resubmit",
+    "changeLogsTitle": "Activity change logs",
+    "changeLogsEmpty": "No change logs",
+    "operator": "Operator",
+    "statusTodo": "To-do",
+    "statusInProgress": "In progress",
+    "statusDone": "Done",
+    "statusBlocked": "Blocked"
   },
   "orgs": {
     "list": "Organizations",
     "new": "Create org (league)",
     "nameZh": "Name (ZH)",
-    "typeZh": "Type (ZH)"
+    "typeZh": "Type (ZH)",
+    "statusTitle": "Organization Status",
+    "statusActive": "Active",
+    "statusPaused": "Paused",
+    "enableOrg": "Enable organization",
+    "pauseOrg": "Pause organization",
+    "changeLogsTitle": "Organization change logs",
+    "changeLogsEmpty": "No change logs",
+    "operator": "Operator"
   },
   "profile": {
     "title": "Profile center",

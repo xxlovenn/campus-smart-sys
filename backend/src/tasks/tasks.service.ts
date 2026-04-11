@@ -55,6 +55,39 @@ export class TasksService {
     private authorization: AuthorizationService,
   ) {}
 
+  private async appendTaskLog(params: {
+    action: string;
+    taskId: string;
+    organizationId?: string | null;
+    actorId?: string | null;
+    detailZh?: string;
+    detailEn?: string;
+    detailRu?: string;
+  }) {
+    await (this.prisma.activityChangeLog as any).create({
+      data: {
+        logType: 'TASK',
+        action: params.action,
+        entityId: params.taskId,
+        taskId: params.taskId,
+        organizationId: params.organizationId ?? null,
+        actorId: params.actorId ?? null,
+        detailZh: params.detailZh ?? '',
+        detailEn: params.detailEn ?? '',
+        detailRu: params.detailRu ?? '',
+      },
+    });
+  }
+
+  private parseOptionalDate(raw?: string) {
+    if (!raw) return null;
+    const d = new Date(raw);
+    if (Number.isNaN(d.getTime())) {
+      throw new BadRequestException('Invalid datetime format');
+    }
+    return d;
+  }
+
   private async inManagedScope(taskId: string, primaryOrgId: string | null, managedOrgIds: string[]) {
     if (managedOrgIds.length === 0) return false;
     if (primaryOrgId && managedOrgIds.includes(primaryOrgId)) return true;
@@ -494,6 +527,16 @@ export class TasksService {
       },
     });
 
+    await this.appendTaskLog({
+      action: approve ? 'TASK_REVIEWED_BY_LEAGUE_APPROVE' : 'TASK_REVIEWED_BY_LEAGUE_REJECT',
+      taskId,
+      organizationId: updated.primaryOrgId ?? null,
+      actorId: reviewerId,
+      detailZh: approve ? '团委审核通过' : `团委审核驳回：${reason?.trim() || '未填写原因'}`,
+      detailEn: approve ? 'Approved by league admin' : `Rejected by league admin: ${reason?.trim() || 'No reason'}`,
+      detailRu: approve ? 'Одобрено комитетом' : `Отклонено комитетом: ${reason?.trim() || 'Без причины'}`,
+    });
+
     return finalized ?? updated;
   }
 
@@ -552,6 +595,15 @@ export class TasksService {
     if (finalized?.approvalStatus === APPROVAL.APPROVED) {
       await this.syncApprovedTaskToMemberPlans(taskId);
     }
+    await this.appendTaskLog({
+      action: approve ? 'TASK_REVIEWED_BY_COORG_APPROVE' : 'TASK_REVIEWED_BY_COORG_REJECT',
+      taskId,
+      organizationId: finalized?.primaryOrgId ?? null,
+      actorId: reviewerId,
+      detailZh: approve ? '协办社团审核通过' : `协办社团驳回：${reason?.trim() || '未填写原因'}`,
+      detailEn: approve ? 'Approved by co-organizer' : `Rejected by co-organizer: ${reason?.trim() || 'No reason'}`,
+      detailRu: approve ? 'Одобрено соорганизатором' : `Отклонено соорганизатором: ${reason?.trim() || 'Без причины'}`,
+    });
     return finalized;
   }
 
@@ -632,6 +684,12 @@ export class TasksService {
 
     if (startAt && endAt && endAt.getTime() < startAt.getTime()) {
       throw new BadRequestException('endAt cannot be earlier than startAt');
+    }
+    if (effectiveRole === UserRole.ORG_ADMIN && dto.relatedOrgIds?.length) {
+      const invalid = dto.relatedOrgIds.filter((id) => !managedOrgIds.includes(id));
+      if (invalid.length > 0) {
+        throw new ForbiddenException('Org admin can only attach managed organizations');
+      }
     }
 
     const task = await (this.prisma.task as any).create({
@@ -726,7 +784,161 @@ export class TasksService {
       });
     }
 
+    await this.appendTaskLog({
+      action: 'TASK_CREATED',
+      taskId: task.id,
+      organizationId: task.primaryOrgId ?? null,
+      actorId: userId,
+      detailZh: `创建活动：${task.titleZh}`,
+      detailEn: `Activity created: ${task.titleEn}`,
+      detailRu: `Создано мероприятие: ${task.titleRu}`,
+    });
+
     return task;
+  }
+
+  async update(
+    userId: string,
+    role: UserRole,
+    taskId: string,
+    dto: {
+      titleZh?: string;
+      titleEn?: string;
+      titleRu?: string;
+      descZh?: string;
+      descEn?: string;
+      descRu?: string;
+      startAt?: string;
+      endAt?: string;
+      dueAt?: string;
+      assigneeId?: string;
+      primaryOrgId?: string;
+      relatedOrgIds?: string[];
+    },
+  ) {
+    const task = await (this.prisma.task as any).findUnique({
+      where: { id: taskId },
+      include: { relatedOrgs: true },
+    });
+    if (!task) throw new NotFoundException('Task not found');
+
+    let orgManaged = false;
+    let managedOrgIds: string[] = [];
+    if (role !== UserRole.LEAGUE_ADMIN) {
+      managedOrgIds = await this.authorization.managedOrgIds(userId);
+      orgManaged = managedOrgIds.length > 0;
+      if (!orgManaged) {
+        throw new ForbiddenException('Student side cannot edit activity tasks');
+      }
+      if (task.source !== SOURCE.ORG_REQUEST) {
+        throw new ForbiddenException('Only organization requests can be edited');
+      }
+      const inManaged = await this.inManagedScope(taskId, task.primaryOrgId, managedOrgIds);
+      if (!inManaged) throw new ForbiddenException('No permission to edit this task');
+      if (task.approvalStatus === APPROVAL.APPROVED) {
+        throw new ForbiddenException('Approved activity cannot be edited');
+      }
+      if (dto.primaryOrgId && !managedOrgIds.includes(dto.primaryOrgId)) {
+        throw new ForbiddenException('primaryOrgId is out of managed scope');
+      }
+      if (dto.relatedOrgIds?.length) {
+        const invalid = dto.relatedOrgIds.filter((id) => !managedOrgIds.includes(id));
+        if (invalid.length > 0) {
+          throw new ForbiddenException('relatedOrgIds must stay in managed scope');
+        }
+      }
+    }
+
+    const startAt = dto.startAt !== undefined ? this.parseOptionalDate(dto.startAt) : (task.startAt ?? null);
+    const endAt = dto.endAt !== undefined ? this.parseOptionalDate(dto.endAt) : (task.endAt ?? null);
+    const dueAt = dto.dueAt !== undefined ? this.parseOptionalDate(dto.dueAt) : (endAt ?? task.dueAt ?? null);
+    const now = Date.now();
+    if (startAt && startAt.getTime() < now - 60 * 1000) {
+      throw new BadRequestException('startAt cannot be earlier than now');
+    }
+    if (endAt && endAt.getTime() < now - 60 * 1000) {
+      throw new BadRequestException('endAt cannot be earlier than now');
+    }
+    if (startAt && endAt && endAt.getTime() < startAt.getTime()) {
+      throw new BadRequestException('endAt cannot be earlier than startAt');
+    }
+
+    const nextApprovalStatus =
+      orgManaged && task.approvalStatus === APPROVAL.REJECTED ? APPROVAL.PENDING : task.approvalStatus;
+    const nextReviewNote =
+      orgManaged && task.approvalStatus === APPROVAL.REJECTED ? '已更新并重新提交审核' : task.reviewNote;
+
+    await this.prisma.$transaction(async (tx) => {
+      await (tx.task as any).update({
+        where: { id: taskId },
+        data: {
+          titleZh: dto.titleZh ?? task.titleZh,
+          titleEn: dto.titleEn ?? task.titleEn,
+          titleRu: dto.titleRu ?? task.titleRu,
+          descZh: dto.descZh ?? task.descZh,
+          descEn: dto.descEn ?? task.descEn,
+          descRu: dto.descRu ?? task.descRu,
+          startAt,
+          endAt,
+          dueAt,
+          assigneeId: dto.assigneeId !== undefined ? dto.assigneeId || null : task.assigneeId,
+          primaryOrgId: dto.primaryOrgId !== undefined ? dto.primaryOrgId || null : task.primaryOrgId,
+          approvalStatus: nextApprovalStatus,
+          reviewedById: nextApprovalStatus === APPROVAL.PENDING ? null : task.reviewedById,
+          approvedAt: nextApprovalStatus === APPROVAL.PENDING ? null : task.approvedAt,
+          reviewNote: nextReviewNote,
+        },
+      });
+
+      if (dto.relatedOrgIds) {
+        await tx.taskOrganization.deleteMany({ where: { taskId } });
+        if (dto.relatedOrgIds.length > 0) {
+          await tx.taskOrganization.createMany({
+            data: dto.relatedOrgIds.map((organizationId) => ({ taskId, organizationId })),
+            skipDuplicates: true,
+          });
+        }
+        if (task.source === SOURCE.ORG_REQUEST) {
+          await (tx.taskOrgReview as any).deleteMany({ where: { taskId } });
+          if (dto.relatedOrgIds.length > 0) {
+            await (tx.taskOrgReview as any).createMany({
+              data: dto.relatedOrgIds.map((organizationId) => ({
+                taskId,
+                organizationId,
+                status: ORG_REVIEW.PENDING,
+                reviewerId: null,
+                reviewedAt: null,
+                reason: '',
+              })),
+              skipDuplicates: true,
+            });
+          }
+        }
+      }
+    });
+
+    const updated = await (this.prisma.task as any).findUnique({
+      where: { id: taskId },
+      include: {
+        primaryOrg: true,
+        relatedOrgs: { include: { organization: true } },
+        orgReviews: true,
+        assignee: { select: { id: true, name: true, email: true } },
+        creator: { select: { id: true, name: true, email: true } },
+      },
+    });
+
+    await this.appendTaskLog({
+      action: orgManaged && task.approvalStatus === APPROVAL.REJECTED ? 'TASK_RESUBMITTED' : 'TASK_UPDATED',
+      taskId,
+      organizationId: updated?.primaryOrgId ?? task.primaryOrgId,
+      actorId: userId,
+      detailZh: `更新活动：${updated?.titleZh ?? task.titleZh}`,
+      detailEn: `Updated activity: ${updated?.titleEn ?? task.titleEn}`,
+      detailRu: `Обновлено мероприятие: ${updated?.titleRu ?? task.titleRu}`,
+    });
+
+    return updated;
   }
 
   async updateStatus(userId: string, role: UserRole, taskId: string, status: TaskStatus) {
@@ -748,7 +960,17 @@ export class TasksService {
     }
 
     if (role === UserRole.LEAGUE_ADMIN) {
-      return this.prisma.task.update({ where: { id: taskId }, data: { status } });
+      const updated = await this.prisma.task.update({ where: { id: taskId }, data: { status } });
+      await this.appendTaskLog({
+        action: 'TASK_STATUS_CHANGED',
+        taskId,
+        organizationId: updated.primaryOrgId ?? null,
+        actorId: userId,
+        detailZh: `任务状态：${from} -> ${status}`,
+        detailEn: `Task status: ${from} -> ${status}`,
+        detailRu: `Статус задачи: ${from} -> ${status}`,
+      });
+      return updated;
     }
 
     const managedOrgIds = await this.authorization.managedOrgIds(userId);
@@ -765,7 +987,17 @@ export class TasksService {
       throw new ForbiddenException('No permission to update this task');
     }
 
-    return this.prisma.task.update({ where: { id: taskId }, data: { status } });
+    const updated = await this.prisma.task.update({ where: { id: taskId }, data: { status } });
+    await this.appendTaskLog({
+      action: 'TASK_STATUS_CHANGED',
+      taskId,
+      organizationId: updated.primaryOrgId ?? null,
+      actorId: userId,
+      detailZh: `任务状态：${from} -> ${status}`,
+      detailEn: `Task status: ${from} -> ${status}`,
+      detailRu: `Статус задачи: ${from} -> ${status}`,
+    });
+    return updated;
   }
 
   async remove(userId: string, role: UserRole, taskId: string) {
@@ -795,9 +1027,57 @@ export class TasksService {
     await this.prisma.taskOrganization.deleteMany({
       where: { taskId },
     });
+    await this.appendTaskLog({
+      action: 'TASK_DELETED',
+      taskId,
+      organizationId: task.primaryOrgId ?? null,
+      actorId: userId,
+      detailZh: `删除活动：${task.titleZh}`,
+      detailEn: `Deleted activity: ${task.titleEn}`,
+      detailRu: `Удалено мероприятие: ${task.titleRu}`,
+    });
 
     return this.prisma.task.delete({
       where: { id: taskId },
+    });
+  }
+
+  async changeLogs(
+    userId: string,
+    role: UserRole,
+    query: { organizationId?: string; taskId?: string; limit?: number },
+  ) {
+    const take = Math.max(1, Math.min(100, Number(query.limit ?? 20)));
+    const where: Record<string, unknown> = { logType: 'TASK' };
+    if (query.organizationId) where.organizationId = query.organizationId;
+    if (query.taskId) where.taskId = query.taskId;
+
+    if (role !== UserRole.LEAGUE_ADMIN) {
+      const managedOrgIds = await this.authorization.managedOrgIds(userId);
+      if (managedOrgIds.length === 0) throw new ForbiddenException('No permission to view task logs');
+      if (query.organizationId && !managedOrgIds.includes(query.organizationId)) {
+        throw new ForbiddenException('No permission to view organization logs');
+      }
+      if (query.taskId) {
+        const task = await this.prisma.task.findUnique({
+          where: { id: query.taskId },
+          select: { primaryOrgId: true },
+        });
+        if (!task || !task.primaryOrgId || !managedOrgIds.includes(task.primaryOrgId)) {
+          throw new ForbiddenException('No permission to view this task logs');
+        }
+      } else if (!query.organizationId) {
+        where.organizationId = { in: managedOrgIds };
+      }
+    }
+
+    return (this.prisma.activityChangeLog as any).findMany({
+      where,
+      include: {
+        actor: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: { createdAt: 'desc' },
+      take,
     });
   }
 }

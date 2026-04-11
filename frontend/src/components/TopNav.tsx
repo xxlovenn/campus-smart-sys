@@ -40,7 +40,6 @@ const NAV_ITEMS: Record<SidebarRole, NavItem[]> = {
     { href: '/admin', key: 'admin' },
     { href: '/organizations', key: 'orgs' },
     { href: '/tasks', key: 'tasks' },
-    { href: '/timeline', key: 'timeline' },
     { href: '/profile', key: 'profile' },
     { href: '/notifications', key: 'notifications' },
   ],

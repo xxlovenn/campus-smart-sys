@@ -105,12 +105,80 @@ class UpdateStatusDto {
   status!: TaskStatus;
 }
 
+class UpdateTaskDto {
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  titleZh?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  titleEn?: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  titleRu?: string;
+
+  @IsOptional()
+  @IsString()
+  descZh?: string;
+
+  @IsOptional()
+  @IsString()
+  descEn?: string;
+
+  @IsOptional()
+  @IsString()
+  descRu?: string;
+
+  @IsOptional()
+  @IsString()
+  startAt?: string;
+
+  @IsOptional()
+  @IsString()
+  endAt?: string;
+
+  @IsOptional()
+  @IsString()
+  dueAt?: string;
+
+  @IsOptional()
+  @IsUUID()
+  assigneeId?: string;
+
+  @IsOptional()
+  @IsUUID()
+  primaryOrgId?: string;
+
+  @IsOptional()
+  @IsArray()
+  @IsUUID('4', { each: true })
+  relatedOrgIds?: string[];
+}
+
 class ReviewTaskRequestDto {
   @IsBoolean()
   approve!: boolean;
   @IsOptional()
   @IsString()
   reason?: string;
+}
+
+class TaskLogsQueryDto {
+  @IsOptional()
+  @IsString()
+  organizationId?: string;
+
+  @IsOptional()
+  @IsString()
+  taskId?: string;
+
+  @IsOptional()
+  @IsString()
+  limit?: string;
 }
 
 @Controller('tasks')
@@ -189,6 +257,16 @@ export class TasksController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Patch(':id')
+  update(
+    @Req() req: { user: { id: string; role: UserRole } },
+    @Param('id') id: string,
+    @Body() body: UpdateTaskDto,
+  ) {
+    return this.tasks.update(req.user.id, req.user.role, id, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch(':id/status')
   updateStatus(
     @Req() req: { user: { id: string; role: UserRole } },
@@ -202,5 +280,18 @@ export class TasksController {
   @Delete(':id')
   remove(@Req() req: { user: { id: string; role: UserRole } }, @Param('id') id: string) {
     return this.tasks.remove(req.user.id, req.user.role, id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('change-logs')
+  changeLogs(
+    @Req() req: { user: { id: string; role: UserRole } },
+    @Query() query: TaskLogsQueryDto,
+  ) {
+    return this.tasks.changeLogs(req.user.id, req.user.role, {
+      organizationId: query.organizationId,
+      taskId: query.taskId,
+      limit: Number(query.limit ?? 20) || 20,
+    });
   }
 }

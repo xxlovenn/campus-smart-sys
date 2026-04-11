@@ -319,13 +319,33 @@
     "new": "新建任务",
     "assignee": "执行人 ID（可选）",
     "primaryOrg": "主责组织 ID",
-    "relatedOrgs": "关联组织 ID（逗号分隔）"
+    "relatedOrgs": "关联组织 ID（逗号分隔）",
+    "orgActivityTitle": "社团活动",
+    "orgActivityHint": "社团活动先提交申请，经团委审核通过后生效并同步成员日程。",
+    "editActivity": "编辑活动",
+    "editModalTitle": "编辑活动申请",
+    "saveAndResubmit": "保存并重新提交",
+    "changeLogsTitle": "活动变更记录",
+    "changeLogsEmpty": "暂无变更记录",
+    "operator": "操作者",
+    "statusTodo": "待处理",
+    "statusInProgress": "进行中",
+    "statusDone": "已完成",
+    "statusBlocked": "受阻"
   },
   "orgs": {
     "list": "组织列表",
     "new": "新建组织（团委）",
     "nameZh": "名称（中文）",
-    "typeZh": "类型（中文）"
+    "typeZh": "类型（中文）",
+    "statusTitle": "组织状态管理",
+    "statusActive": "已启用",
+    "statusPaused": "已暂停",
+    "enableOrg": "启用组织",
+    "pauseOrg": "暂停组织",
+    "changeLogsTitle": "组织变更记录",
+    "changeLogsEmpty": "暂无变更记录",
+    "operator": "操作者"
   },
   "profile": {
     "title": "档案中心",

@@ -322,13 +322,33 @@
     "new": "Новая задача",
     "assignee": "ID исполнителя (опц.)",
     "primaryOrg": "ID основной организации",
-    "relatedOrgs": "Связанные org ID (через запятую)"
+    "relatedOrgs": "Связанные org ID (через запятую)",
+    "orgActivityTitle": "Активности организации",
+    "orgActivityHint": "Заявки организации вступают в силу после одобрения комитетом и синхронизируются в расписания участников.",
+    "editActivity": "Редактировать активность",
+    "editModalTitle": "Редактировать заявку активности",
+    "saveAndResubmit": "Сохранить и отправить повторно",
+    "changeLogsTitle": "Журнал изменений активности",
+    "changeLogsEmpty": "Записей пока нет",
+    "operator": "Оператор",
+    "statusTodo": "К выполнению",
+    "statusInProgress": "В процессе",
+    "statusDone": "Завершено",
+    "statusBlocked": "Заблокировано"
   },
   "orgs": {
     "list": "Организации",
     "new": "Создать организацию (комитет)",
     "nameZh": "Название (ZH)",
-    "typeZh": "Тип (ZH)"
+    "typeZh": "Тип (ZH)",
+    "statusTitle": "Статус организации",
+    "statusActive": "Активна",
+    "statusPaused": "Приостановлена",
+    "enableOrg": "Активировать организацию",
+    "pauseOrg": "Приостановить организацию",
+    "changeLogsTitle": "Журнал изменений организации",
+    "changeLogsEmpty": "Записей пока нет",
+    "operator": "Оператор"
   },
   "profile": {
     "title": "Архив профиля",

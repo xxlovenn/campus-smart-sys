@@ -7,11 +7,12 @@ import {
   Patch,
   ParseUUIDPipe,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
 import { IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
-import { OrganizationMemberRole, UserRole } from '@prisma/client';
+import { OrganizationMemberRole, OrganizationStatus, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -106,6 +107,11 @@ class UpdateOrgDto {
   leaderUserId?: string;
 }
 
+class UpdateOrgStatusDto {
+  @IsEnum(OrganizationStatus)
+  status!: OrganizationStatus;
+}
+
 class UpdateOrgCredentialDto {
   @IsString()
   @MinLength(6)
@@ -113,6 +119,12 @@ class UpdateOrgCredentialDto {
   @IsString()
   @MinLength(6)
   password!: string;
+}
+
+class QueryOrgLogsDto {
+  @IsOptional()
+  @IsString()
+  limit?: string;
 }
 
 @Controller('organizations')
@@ -158,6 +170,29 @@ export class OrganizationsController {
     @Req() req: { user: { id: string; role: UserRole } },
   ) {
     return this.orgs.update(id, body, req.user.id, req.user.role);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN, UserRole.ORG_ADMIN)
+  @Patch(':id/status')
+  updateStatus(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: UpdateOrgStatusDto,
+    @Req() req: { user: { id: string; role: UserRole } },
+  ) {
+    return this.orgs.updateStatus(id, body.status, req.user.id, req.user.role);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN, UserRole.ORG_ADMIN)
+  @Get(':id/change-logs')
+  changeLogs(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query() query: QueryOrgLogsDto,
+    @Req() req: { user: { id: string; role: UserRole } },
+  ) {
+    const limit = Number(query.limit ?? 20) || 20;
+    return this.orgs.changeLogs(id, req.user.id, req.user.role, limit);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

@@ -406,7 +406,7 @@ export default function TasksPage() {
     }
   }
 
-  const managedOrgIds = me?.managedOrgIds ?? [];
+  const managedOrgIds = useMemo(() => me?.managedOrgIds ?? [], [me?.managedOrgIds]);
   const isLeagueAdmin = me?.role === 'LEAGUE_ADMIN';
   const isOrgAdmin = !isLeagueAdmin && managedOrgIds.length > 0;
   const canCreate = isLeagueAdmin || isOrgAdmin;

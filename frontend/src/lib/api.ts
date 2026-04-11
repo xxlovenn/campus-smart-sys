@@ -2,7 +2,7 @@ import { routing } from '@/i18n/routing';
 import { clearToken, emitAuthLogout } from './auth-storage';
 
 export function getApiBase(): string {
-  return process.env.NEXT_PUBLIC_API_URL || '/api';
+  return '/api';
 }
 
 function joinUrl(base: string, path: string) {

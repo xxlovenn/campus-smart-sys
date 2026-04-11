@@ -31,7 +31,8 @@ docker compose up -d --build
 - 前端：<http://localhost:3000>（自动进入默认语言路由，例如 `/zh`）
 - 后端 API（可直连调试）：<http://localhost:3001/api>
 
-> 前端统一使用相对路径 `/api`，并通过 Next.js rewrites 转发到 `backend:3001/api`。默认无需再手动改前端 API 地址。
+> 前端统一使用相对路径 `/api`，并通过 Next.js rewrites 转发到 `backend:3001/api`。
+> 比赛部署时无需配置或修改 `NEXT_PUBLIC_API_URL`，也不需要重新构建前端来切换后端地址。
 
 ## Backend 启动与初始化（推荐）
 
@@ -40,6 +41,8 @@ docker compose up -d --build
 ```bash
 docker compose up -d --build
 ```
+
+> backend 容器启动流程为：`prisma migrate deploy` + `node dist/main.js`（通过 `npm run start:container`），不会在每次启动时自动执行 seed。
 
 - 首次初始化演示数据（仅需要时执行一次）：
 
@@ -50,7 +53,7 @@ docker compose exec backend npm run db:init
 - 仅重置演示数据（不会重启服务）：
 
 ```bash
-docker compose exec backend npm run prisma:seed
+docker compose exec backend npm run db:reseed
 ```
 
 ## 默认演示账号（种子数据）
@@ -86,6 +89,7 @@ docker compose exec backend npm run prisma:seed
 
 - **端口占用**：修改 `docker-compose.yml` 中 `3000` / `3001` / `5432` 映射。
 - **JWT / 数据库连接失败**：确认根目录 `.env` 与容器内 `DATABASE_URL` 一致；重新 `docker compose up -d --build`。
+- **前后端通信配置**：前端固定请求 `/api`；如需变更容器内后端地址，只需改 `.env` 中 `BACKEND_INTERNAL_ORIGIN` 并重启前端容器。
 - **Windows 防火墙**：优先访问前端 `localhost:3000`，前端会同源转发 `/api` 到后端；若直接调试后端端口，再放行 `3001`。
 
 ## 将代码推送到你的 GitHub（新建公开库）

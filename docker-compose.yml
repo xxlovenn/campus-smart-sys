@@ -48,14 +48,12 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        NEXT_PUBLIC_API_URL: /api
         BACKEND_INTERNAL_ORIGIN: http://backend:3001
     restart: unless-stopped
     depends_on:
       backend:
         condition: service_healthy
     environment:
-      NEXT_PUBLIC_API_URL: /api
       BACKEND_INTERNAL_ORIGIN: http://backend:3001
     healthcheck:
       test:

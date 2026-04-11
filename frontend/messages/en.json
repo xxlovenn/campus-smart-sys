@@ -169,6 +169,36 @@
       "emptyTitle": "No tasks to display yet",
       "emptyDesc": "Go to task center to create or review task data first.",
       "emptyAction": "Open task center"
+    },
+    "viz": {
+      "states": {
+        "loading": "Loading visualization data...",
+        "empty": "No visualization data yet",
+        "overviewUnavailable": "Task overview is currently unavailable",
+        "reviewUnavailable": "Profile review stats are currently unavailable"
+      },
+      "taskStatus": {
+        "title": "Task status distribution",
+        "hint": "Based on global task board data",
+        "todo": "To-do",
+        "inProgress": "In progress",
+        "done": "Done",
+        "blocked": "Blocked"
+      },
+      "review": {
+        "title": "Profile review distribution",
+        "hint": "Based on primary profile review status",
+        "pending": "Pending",
+        "approved": "Approved",
+        "rejected": "Rejected"
+      },
+      "orgTasks": {
+        "title": "Organization task count (primary org)",
+        "hint": "Grouped by primary organization, Top 6 shown",
+        "empty": "No organization task stats yet",
+        "unknownOrg": "Unnamed organization",
+        "count": "{count} tasks"
+      }
     }
   },
   "timeline": {

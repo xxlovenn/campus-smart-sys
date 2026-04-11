@@ -469,6 +469,138 @@
     font-size: 12px;
     font-weight: 700;
   }
+
+  .dashboard-viz-grid {
+    margin-top: 14px;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 12px;
+  }
+
+  .dashboard-viz-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 14px;
+    display: grid;
+    gap: 8px;
+  }
+
+  .dashboard-viz-title {
+    margin: 0;
+    font-size: 16px;
+  }
+
+  .dashboard-viz-subtitle {
+    margin: 0;
+    font-size: 12px;
+  }
+
+  .dashboard-viz-bar {
+    height: 12px;
+    border-radius: 999px;
+    overflow: hidden;
+    background: #e2e8f0;
+    display: flex;
+    width: 100%;
+  }
+
+  .dashboard-viz-segment {
+    height: 100%;
+  }
+
+  .dashboard-viz-segment-blue {
+    background: #2563eb;
+  }
+
+  .dashboard-viz-segment-indigo {
+    background: #6366f1;
+  }
+
+  .dashboard-viz-segment-green {
+    background: #16a34a;
+  }
+
+  .dashboard-viz-segment-red {
+    background: #dc2626;
+  }
+
+  .dashboard-viz-segment-yellow {
+    background: #d97706;
+  }
+
+  .dashboard-viz-segment-orange {
+    background: #ea580c;
+  }
+
+  .dashboard-viz-legend {
+    display: grid;
+    gap: 6px;
+  }
+
+  .dashboard-viz-legend-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 13px;
+  }
+
+  .dashboard-viz-legend-label {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    color: var(--muted);
+  }
+
+  .dashboard-viz-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 999px;
+    display: inline-block;
+  }
+
+  .dashboard-viz-empty {
+    border: 1px dashed var(--border);
+    border-radius: 10px;
+    padding: 10px 12px;
+    background: #f8fafc;
+  }
+
+  .dashboard-viz-error {
+    margin: 0;
+    color: var(--danger);
+    font-size: 13px;
+  }
+
+  .dashboard-viz-org-list {
+    display: grid;
+    gap: 8px;
+  }
+
+  .dashboard-viz-org-item {
+    display: grid;
+    gap: 4px;
+  }
+
+  .dashboard-viz-org-header {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 13px;
+  }
+
+  .dashboard-viz-org-track {
+    height: 8px;
+    border-radius: 999px;
+    background: #e2e8f0;
+    overflow: hidden;
+  }
+
+  .dashboard-viz-org-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #2563eb, #7c3aed);
+  }
   
   .grid-two {
     display: grid;
@@ -561,6 +693,10 @@
 
     .dashboard-stats-grid {
       grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .dashboard-viz-grid {
+      grid-template-columns: 1fr;
     }
   
     .main-area {

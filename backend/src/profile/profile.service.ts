@@ -380,6 +380,30 @@ export class ProfileService {
     });
   }
 
+  async reviewStats() {
+    const grouped = await this.prisma.profile.groupBy({
+      by: ['reviewStatus'],
+      where: {
+        user: { isOrgAccount: false },
+      },
+      _count: { _all: true },
+    });
+
+    const countByStatus = (status: ProfileReviewStatus) =>
+      grouped.find((row) => row.reviewStatus === status)?._count?._all ?? 0;
+
+    const pending = countByStatus(ProfileReviewStatus.PENDING);
+    const approved = countByStatus(ProfileReviewStatus.APPROVED);
+    const rejected = countByStatus(ProfileReviewStatus.REJECTED);
+
+    return {
+      pending,
+      approved,
+      rejected,
+      total: pending + approved + rejected,
+    };
+  }
+
   async review(userId: string, dto: { approve: boolean; reason?: string }) {
     const exists = await this.prisma.profile.findUnique({ where: { userId } });
     if (!exists) throw new NotFoundException();

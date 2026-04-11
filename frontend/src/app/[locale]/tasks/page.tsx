@@ -406,14 +406,6 @@ export default function TasksPage() {
     }
   }
 
-  if (!ready || !token) {
-    return (
-      <div className="page-card">
-        <p className="page-subtitle">正在校验登录状态...</p>
-      </div>
-    );
-  }
-
   const managedOrgIds = me?.managedOrgIds ?? [];
   const isLeagueAdmin = me?.role === 'LEAGUE_ADMIN';
   const isOrgAdmin = !isLeagueAdmin && managedOrgIds.length > 0;
@@ -483,6 +475,14 @@ export default function TasksPage() {
       ),
     [orgScopedTasks],
   );
+
+  if (!ready || !token) {
+    return (
+      <div className="page-card">
+        <p className="page-subtitle">正在校验登录状态...</p>
+      </div>
+    );
+  }
 
   const renderTaskList = (title: string, list: Task[], emptyText: string) => (
     <div className="page-section">

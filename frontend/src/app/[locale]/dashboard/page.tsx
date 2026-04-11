@@ -1,9 +1,10 @@
 'use client';
 
-import { useTranslations } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
+import { triField } from '@/lib/tri';
 import { useAuthGuard } from '@/lib/use-auth-guard';
 
 type Me = {
@@ -17,13 +18,31 @@ type OverviewStatusRow = {
   status?: string;
   _count?: { _all?: number };
 };
+type TaskOverviewTask = {
+  status?: string;
+  approvalStatus?: string;
+  primaryOrgId?: string | null;
+  primaryOrg?: Record<string, unknown> | null;
+};
 type TaskOverview = {
   grouped?: OverviewStatusRow[];
-  tasks?: Array<{ approvalStatus?: string }>;
+  tasks?: TaskOverviewTask[];
 };
 type DashboardTaskRow = {
   status?: string;
   approvalStatus?: string;
+};
+type ReviewStats = {
+  pending: number;
+  approved: number;
+  rejected: number;
+  total: number;
+};
+type SegmentTone = 'blue' | 'green' | 'yellow' | 'red' | 'indigo' | 'orange';
+type VizSegment = {
+  label: string;
+  value: number;
+  tone: SegmentTone;
 };
 
 type QuickKey = 'timeline' | 'tasks' | 'organizations' | 'profile' | 'notifications' | 'admin';
@@ -117,7 +136,17 @@ function approvalCount(rows: DashboardTaskRow[], status: string) {
   return rows.filter((row) => row.approvalStatus === status).length;
 }
 
+function toneClass(tone: SegmentTone) {
+  if (tone === 'blue') return 'dashboard-viz-segment-blue';
+  if (tone === 'green') return 'dashboard-viz-segment-green';
+  if (tone === 'yellow') return 'dashboard-viz-segment-yellow';
+  if (tone === 'red') return 'dashboard-viz-segment-red';
+  if (tone === 'orange') return 'dashboard-viz-segment-orange';
+  return 'dashboard-viz-segment-indigo';
+}
+
 export default function DashboardPage() {
+  const locale = useLocale();
   const t = useTranslations('dashboard');
   const tSidebar = useTranslations('sidebar');
   const tc = useTranslations('common');
@@ -125,9 +154,11 @@ export default function DashboardPage() {
   const [me, setMe] = useState<Me | null>(null);
   const [tasks, setTasks] = useState<DashboardTaskRow[]>([]);
   const [overview, setOverview] = useState<TaskOverview | null>(null);
+  const [reviewStats, setReviewStats] = useState<ReviewStats | null>(null);
   const [loadingData, setLoadingData] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [overviewErr, setOverviewErr] = useState<string | null>(null);
+  const [reviewErr, setReviewErr] = useState<string | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
@@ -135,7 +166,9 @@ export default function DashboardPage() {
       setMe(null);
       setTasks([]);
       setOverview(null);
+      setReviewStats(null);
       setOverviewErr(null);
+      setReviewErr(null);
       setLoadingData(false);
       return;
     }
@@ -146,6 +179,7 @@ export default function DashboardPage() {
       setLoadingData(true);
       setErr(null);
       setOverviewErr(null);
+      setReviewErr(null);
       try {
         const user = await apiFetch<Me>('/users/me', { token });
         if (!active) return;
@@ -161,23 +195,44 @@ export default function DashboardPage() {
         }
 
         if (user.role === 'LEAGUE_ADMIN') {
-          try {
-            const ov = await apiFetch<TaskOverview>('/tasks/admin/overview', { token });
-            if (active) setOverview(ov);
-          } catch (e) {
-            if (active) {
-              setOverview(null);
-              setOverviewErr(e instanceof Error ? e.message : t('states.partialOverview'));
-            }
+          const [overviewRes, reviewRes] = await Promise.allSettled([
+            apiFetch<TaskOverview>('/tasks/admin/overview', { token }),
+            apiFetch<ReviewStats>('/profile/admin/review-stats', { token }),
+          ]);
+
+          if (!active) return;
+
+          if (overviewRes.status === 'fulfilled') {
+            setOverview(overviewRes.value);
+          } else {
+            setOverview(null);
+            setOverviewErr(
+              overviewRes.reason instanceof Error
+                ? overviewRes.reason.message
+                : t('states.partialOverview'),
+            );
+          }
+
+          if (reviewRes.status === 'fulfilled') {
+            setReviewStats(reviewRes.value);
+          } else {
+            setReviewStats(null);
+            setReviewErr(
+              reviewRes.reason instanceof Error
+                ? reviewRes.reason.message
+                : t('viz.states.reviewUnavailable'),
+            );
           }
         } else if (active) {
           setOverview(null);
+          setReviewStats(null);
         }
       } catch (e) {
         if (active) {
           setMe(null);
           setTasks([]);
           setOverview(null);
+          setReviewStats(null);
           setErr(e instanceof Error ? e.message : tc('error'));
         }
       } finally {
@@ -216,6 +271,7 @@ export default function DashboardPage() {
   const roleSummary = useMemo(() => t(roleSummaryKey(me?.role)), [me?.role, t]);
   const coreQuickKeys = useMemo(() => quickKeys.slice(0, 3), [quickKeys]);
   const extraQuickKeys = useMemo(() => quickKeys.slice(3), [quickKeys]);
+  const isLeagueAdmin = me?.role === 'LEAGUE_ADMIN';
   const metrics = useMemo(() => {
     if (me?.role === 'LEAGUE_ADMIN' && overview) {
       const grouped = Array.isArray(overview.grouped) ? overview.grouped : [];
@@ -244,6 +300,51 @@ export default function DashboardPage() {
       total: tasks.length,
     };
   }, [me?.role, overview, tasks]);
+  const overviewTasks = useMemo(
+    () => (Array.isArray(overview?.tasks) ? overview.tasks : []),
+    [overview?.tasks],
+  );
+  const taskStatusSegments = useMemo<VizSegment[] | null>(() => {
+    if (!isLeagueAdmin || !overview) return null;
+    const grouped = Array.isArray(overview.grouped) ? overview.grouped : [];
+    const statusGrouped = (status: string) =>
+      grouped.find((row) => row.status === status)?._count?._all ?? 0;
+    return [
+      { label: t('viz.taskStatus.todo'), value: statusGrouped('TODO'), tone: 'blue' },
+      { label: t('viz.taskStatus.inProgress'), value: statusGrouped('IN_PROGRESS'), tone: 'indigo' },
+      { label: t('viz.taskStatus.done'), value: statusGrouped('DONE'), tone: 'green' },
+      { label: t('viz.taskStatus.blocked'), value: statusGrouped('BLOCKED'), tone: 'red' },
+    ];
+  }, [isLeagueAdmin, overview, t]);
+  const reviewSegments = useMemo<VizSegment[] | null>(() => {
+    if (!isLeagueAdmin || !reviewStats) return null;
+    return [
+      { label: t('viz.review.pending'), value: reviewStats.pending, tone: 'yellow' },
+      { label: t('viz.review.approved'), value: reviewStats.approved, tone: 'green' },
+      { label: t('viz.review.rejected'), value: reviewStats.rejected, tone: 'red' },
+    ];
+  }, [isLeagueAdmin, reviewStats, t]);
+  const orgTaskRanking = useMemo(() => {
+    if (!isLeagueAdmin || overviewTasks.length === 0) return [];
+    const map = new Map<string, { name: string; count: number }>();
+    for (const task of overviewTasks) {
+      const orgId = task.primaryOrgId ?? '';
+      if (!orgId) continue;
+      const orgName = triField((task.primaryOrg as Record<string, unknown>) ?? {}, 'name', locale);
+      const row = map.get(orgId);
+      if (row) {
+        row.count += 1;
+      } else {
+        map.set(orgId, {
+          name: orgName || t('viz.orgTasks.unknownOrg'),
+          count: 1,
+        });
+      }
+    }
+    return Array.from(map.values())
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 6);
+  }, [isLeagueAdmin, locale, overviewTasks, t]);
 
   const statCards = useMemo(() => {
     if (me?.role === 'LEAGUE_ADMIN') {
@@ -269,6 +370,56 @@ export default function DashboardPage() {
       { label: t('stats.student.total'), value: metrics.total },
     ];
   }, [me?.role, metrics, t]);
+  const segmentPercent = (value: number, total: number) =>
+    total > 0 ? `${Math.max(3, (value / total) * 100)}%` : '0%';
+  const renderSegments = (segments: VizSegment[] | null, emptyText: string) => {
+    if (!segments) {
+      return (
+        <div className="dashboard-viz-empty">
+          <p className="topbar-muted" style={{ margin: 0 }}>
+            {emptyText}
+          </p>
+        </div>
+      );
+    }
+    const total = segments.reduce((sum, seg) => sum + seg.value, 0);
+    if (total === 0) {
+      return (
+        <div className="dashboard-viz-empty">
+          <p className="topbar-muted" style={{ margin: 0 }}>
+            {t('viz.states.empty')}
+          </p>
+        </div>
+      );
+    }
+    return (
+      <div style={{ display: 'grid', gap: 10 }}>
+        <div className="dashboard-viz-bar">
+          {segments
+            .filter((seg) => seg.value > 0)
+            .map((seg) => (
+              <div
+                key={seg.label}
+                className={`dashboard-viz-segment ${toneClass(seg.tone)}`}
+                style={{ width: segmentPercent(seg.value, total) }}
+                title={`${seg.label}: ${seg.value}`}
+              />
+            ))}
+        </div>
+        <div className="dashboard-viz-legend">
+          {segments.map((seg) => (
+            <div key={seg.label} className="dashboard-viz-legend-row">
+              <span className="dashboard-viz-legend-label">
+                <span className={`dashboard-viz-dot ${toneClass(seg.tone)}`} />
+                {seg.label}
+              </span>
+              <strong>{seg.value}</strong>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  };
 
   if (!ready || !token) {
     return (
@@ -421,6 +572,64 @@ export default function DashboardPage() {
               <Link href="/tasks" className="dashboard-link-inline">
                 {t('states.emptyAction')}
               </Link>
+            </div>
+          ) : null}
+
+          {isLeagueAdmin ? (
+            <div className="dashboard-viz-grid">
+              <div className="dashboard-viz-card">
+                <h3 className="dashboard-viz-title">{t('viz.taskStatus.title')}</h3>
+                <p className="topbar-muted dashboard-viz-subtitle">{t('viz.taskStatus.hint')}</p>
+                {loadingData && !taskStatusSegments ? (
+                  <p className="topbar-muted">{t('viz.states.loading')}</p>
+                ) : overviewErr ? (
+                  <p className="dashboard-viz-error">{overviewErr}</p>
+                ) : (
+                  renderSegments(taskStatusSegments, t('viz.states.overviewUnavailable'))
+                )}
+              </div>
+
+              <div className="dashboard-viz-card">
+                <h3 className="dashboard-viz-title">{t('viz.review.title')}</h3>
+                <p className="topbar-muted dashboard-viz-subtitle">{t('viz.review.hint')}</p>
+                {loadingData && !reviewSegments ? (
+                  <p className="topbar-muted">{t('viz.states.loading')}</p>
+                ) : reviewErr ? (
+                  <p className="dashboard-viz-error">{reviewErr}</p>
+                ) : (
+                  renderSegments(reviewSegments, t('viz.states.reviewUnavailable'))
+                )}
+              </div>
+
+              <div className="dashboard-viz-card">
+                <h3 className="dashboard-viz-title">{t('viz.orgTasks.title')}</h3>
+                <p className="topbar-muted dashboard-viz-subtitle">{t('viz.orgTasks.hint')}</p>
+                {loadingData && orgTaskRanking.length === 0 ? (
+                  <p className="topbar-muted">{t('viz.states.loading')}</p>
+                ) : overviewErr ? (
+                  <p className="dashboard-viz-error">{t('viz.states.overviewUnavailable')}</p>
+                ) : orgTaskRanking.length === 0 ? (
+                  <p className="topbar-muted">{t('viz.orgTasks.empty')}</p>
+                ) : (
+                  <div className="dashboard-viz-org-list">
+                    {orgTaskRanking.map((row) => {
+                      const max = orgTaskRanking[0]?.count || 1;
+                      const pct = `${Math.max(8, (row.count / max) * 100)}%`;
+                      return (
+                        <div key={row.name} className="dashboard-viz-org-item">
+                          <div className="dashboard-viz-org-header">
+                            <span>{row.name}</span>
+                            <strong>{t('viz.orgTasks.count', { count: row.count })}</strong>
+                          </div>
+                          <div className="dashboard-viz-org-track">
+                            <div className="dashboard-viz-org-fill" style={{ width: pct }} />
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </div>
             </div>
           ) : null}
         </div>

@@ -239,6 +239,13 @@ export class ProfileController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.LEAGUE_ADMIN)
+  @Get('admin/review-stats')
+  reviewStats() {
+    return this.profile.reviewStats();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
   @Patch('admin/:userId/review')
   review(@Param('userId') userId: string, @Body() body: ReviewDto) {
     return this.profile.review(userId, body);

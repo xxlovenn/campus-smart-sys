@@ -166,6 +166,36 @@
       "emptyTitle": "当前暂无可展示任务",
       "emptyDesc": "你可以先进入任务中心创建或查看任务数据。",
       "emptyAction": "进入任务中心"
+    },
+    "viz": {
+      "states": {
+        "loading": "可视化数据加载中...",
+        "empty": "暂无可视化数据",
+        "overviewUnavailable": "任务概览数据暂不可用",
+        "reviewUnavailable": "档案审核统计暂不可用"
+      },
+      "taskStatus": {
+        "title": "任务状态分布",
+        "hint": "基于全局任务看板统计",
+        "todo": "待开始",
+        "inProgress": "进行中",
+        "done": "已完成",
+        "blocked": "受阻"
+      },
+      "review": {
+        "title": "档案审核分布",
+        "hint": "基于学生档案审核主状态",
+        "pending": "待审核",
+        "approved": "审核通过",
+        "rejected": "审核驳回"
+      },
+      "orgTasks": {
+        "title": "组织任务数量（主组织）",
+        "hint": "按任务主组织统计，展示 Top 6",
+        "empty": "暂无组织任务统计数据",
+        "unknownOrg": "未命名组织",
+        "count": "{count} 个"
+      }
     }
   },
   "timeline": {

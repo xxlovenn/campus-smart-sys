@@ -5,9 +5,14 @@ import { useLocale } from 'next-intl';
 import { useRouter } from '@/navigation';
 import { apiFetch } from '@/lib/api';
 import { setToken } from '@/lib/auth-storage';
+import { Modal } from '@/components/Modal';
 
 type LoginResponse = {
   accessToken: string;
+};
+
+type RegisterResponse = {
+  ok: boolean;
 };
 
 export default function LoginPage() {
@@ -17,28 +22,92 @@ export default function LoginPage() {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
-  const [err, setErr] = useState('');
+  const [loginErr, setLoginErr] = useState('');
+  const [registerOpen, setRegisterOpen] = useState(false);
+  const [registerEmail, setRegisterEmail] = useState('');
+  const [registerPassword, setRegisterPassword] = useState('');
+  const [registerLoading, setRegisterLoading] = useState(false);
+  const [registerErr, setRegisterErr] = useState('');
+  const [registerMsg, setRegisterMsg] = useState('');
+
+  function normalizeTail(value: string) {
+    return value.trimEnd();
+  }
+
+  function parseApiErrorMessage(error: unknown, fallback: string) {
+    if (!(error instanceof Error)) return fallback;
+    let message = error.message || fallback;
+    try {
+      const parsed = JSON.parse(message) as { message?: string | string[] };
+      if (Array.isArray(parsed?.message)) {
+        message = parsed.message.join('；');
+      } else if (typeof parsed?.message === 'string') {
+        message = parsed.message;
+      }
+    } catch {
+      // keep original plain text
+    }
+
+    if (message.includes('Invalid credentials')) return '账号或密码错误，请检查后重试。';
+    if (message.includes('Account already exists')) return '该账号已注册，请直接登录。';
+    if (message.includes('Password must be at least 6')) return '密码至少 6 位。';
+    if (message.includes('email must be an email')) return '请输入有效邮箱地址。';
+    return message || fallback;
+  }
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
-    setErr('');
+    setLoginErr('');
+    setRegisterErr('');
+    setRegisterMsg('');
     setLoading(true);
 
     try {
+      const normalizedEmail = normalizeTail(email);
+      const normalizedPassword = normalizeTail(password);
       const data = await apiFetch<LoginResponse>('/auth/login', {
         method: 'POST',
         body: JSON.stringify({
-          email,
-          password,
+          email: normalizedEmail,
+          password: normalizedPassword,
         }),
       });
 
       setToken(data.accessToken);
       router.replace('/dashboard', { locale });
     } catch (error) {
-      setErr(error instanceof Error ? error.message : '登录失败');
+      setLoginErr(parseApiErrorMessage(error, '登录失败，请稍后重试。'));
     } finally {
       setLoading(false);
+    }
+  }
+
+  async function onRegister(e: FormEvent) {
+    e.preventDefault();
+    setLoginErr('');
+    setRegisterErr('');
+    setRegisterMsg('');
+    setRegisterLoading(true);
+    try {
+      const normalizedEmail = normalizeTail(registerEmail);
+      const normalizedPassword = normalizeTail(registerPassword);
+      await apiFetch<RegisterResponse>('/auth/register', {
+        method: 'POST',
+        body: JSON.stringify({
+          email: normalizedEmail,
+          password: normalizedPassword,
+        }),
+      });
+      setEmail(normalizedEmail);
+      setPassword(normalizedPassword);
+      setRegisterMsg('注册成功，请使用该账号登录（默认学生端权限）');
+      setRegisterOpen(false);
+      setRegisterEmail('');
+      setRegisterPassword('');
+    } catch (error) {
+      setRegisterErr(parseApiErrorMessage(error, '注册失败，请稍后重试。'));
+    } finally {
+      setRegisterLoading(false);
     }
   }
 
@@ -232,7 +301,7 @@ export default function LoginPage() {
             </div>
           </div>
 
-          {err ? (
+          {loginErr ? (
             <div
               style={{
                 marginBottom: 16,
@@ -244,7 +313,7 @@ export default function LoginPage() {
                 fontSize: 14,
               }}
             >
-              {err}
+              {loginErr}
             </div>
           ) : null}
 
@@ -256,18 +325,47 @@ export default function LoginPage() {
             }}
           >
             <label style={{ display: 'grid', gap: 8 }}>
-              <span
+              <div
                 style={{
-                  fontSize: 14,
-                  fontWeight: 700,
-                  color: '#334155',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
                 }}
               >
-                邮箱账号
-              </span>
+                <span
+                  style={{
+                    fontSize: 14,
+                    fontWeight: 700,
+                    color: '#334155',
+                  }}
+                >
+                  邮箱账号
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setRegisterErr('');
+                    setRegisterMsg('');
+                    setRegisterOpen(true);
+                  }}
+                  style={{
+                    border: 'none',
+                    background: 'transparent',
+                    color: '#2563eb',
+                    fontSize: 13,
+                    fontWeight: 700,
+                    cursor: 'pointer',
+                    padding: 0,
+                  }}
+                >
+                  注册账号
+                </button>
+              </div>
               <input
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
+                onBlur={(e) => setEmail(normalizeTail(e.target.value))}
                 placeholder="请输入邮箱"
                 style={{
                   border: '1px solid #dbe2f0',
@@ -294,6 +392,7 @@ export default function LoginPage() {
                 type="password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
+                onBlur={(e) => setPassword(normalizeTail(e.target.value))}
                 placeholder="请输入密码"
                 style={{
                   border: '1px solid #dbe2f0',
@@ -305,6 +404,21 @@ export default function LoginPage() {
                 }}
               />
             </label>
+
+            {registerMsg ? (
+              <div
+                style={{
+                  padding: '10px 12px',
+                  borderRadius: 12,
+                  border: '1px solid #bbf7d0',
+                  background: '#f0fdf4',
+                  color: '#166534',
+                  fontSize: 13,
+                }}
+              >
+                {registerMsg}
+              </div>
+            ) : null}
 
             <button
               type="submit"
@@ -360,6 +474,53 @@ export default function LoginPage() {
           </div>
         </div>
       </div>
+
+      <Modal open={registerOpen} title="学生注册" onClose={() => setRegisterOpen(false)} width={420}>
+        <form onSubmit={onRegister} style={{ display: 'grid', gap: 12 }}>
+          {registerErr ? (
+            <div
+              style={{
+                padding: '10px 12px',
+                borderRadius: 10,
+                border: '1px solid #fecaca',
+                background: '#fef2f2',
+                color: '#b91c1c',
+                fontSize: 13,
+              }}
+            >
+              {registerErr}
+            </div>
+          ) : null}
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ fontSize: 13, color: '#475569' }}>账号（邮箱）</span>
+            <input
+              value={registerEmail}
+              onChange={(e) => setRegisterEmail(e.target.value)}
+              onBlur={(e) => setRegisterEmail(normalizeTail(e.target.value))}
+              placeholder="请输入注册邮箱"
+              required
+            />
+          </label>
+          <label style={{ display: 'grid', gap: 6 }}>
+            <span style={{ fontSize: 13, color: '#475569' }}>密码</span>
+            <input
+              type="password"
+              value={registerPassword}
+              onChange={(e) => setRegisterPassword(e.target.value)}
+              onBlur={(e) => setRegisterPassword(normalizeTail(e.target.value))}
+              placeholder="至少 6 位"
+              minLength={6}
+              required
+            />
+          </label>
+          <div className="topbar-muted" style={{ fontSize: 12 }}>
+            注册用户默认归属学生组，仅具有学生端权限。
+          </div>
+          <button type="submit" disabled={registerLoading}>
+            {registerLoading ? '注册中...' : '确认注册'}
+          </button>
+        </form>
+      </Modal>
     </div>
   );
 }

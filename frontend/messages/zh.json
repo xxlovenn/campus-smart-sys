@@ -182,6 +182,24 @@
           "low": "低优先级"
         }
       },
+      "recommendations": {
+        "title": "智能任务推荐（今日执行顺序）",
+        "empty": "当前暂无推荐任务",
+        "order": "推荐 #{order}",
+        "reasons": {
+          "overdue": "已逾期，需立即处理",
+          "due6h": "6小时内截止",
+          "due24h": "24小时内截止",
+          "due72h": "3天内截止",
+          "inProgress": "任务进行中，建议优先收尾",
+          "todo": "待开始任务，建议尽快启动",
+          "blocked": "任务受阻，建议尽快处理阻塞",
+          "notDone": "未完成任务优先",
+          "done": "已完成，优先级较低",
+          "noDeadline": "无明确截止时间",
+          "default": "综合优先级推荐"
+        }
+      },
       "ai": {
         "title": "AI 建议",
         "empty": "当前暂无建议",

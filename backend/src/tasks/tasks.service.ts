@@ -36,6 +36,18 @@ const ORG_REVIEW = {
   REJECTED: 'REJECTED',
 } as const;
 
+type RecommendationCode =
+  | 'overdue'
+  | 'due_6h'
+  | 'due_24h'
+  | 'due_72h'
+  | 'not_done'
+  | 'done'
+  | 'in_progress'
+  | 'todo'
+  | 'blocked'
+  | 'no_deadline';
+
 @Injectable()
 export class TasksService {
   constructor(
@@ -177,6 +189,99 @@ export class TasksService {
     }
 
     return task;
+  }
+
+  private computeRecommendation(task: any, now: Date) {
+    const due = task.dueAt ?? task.endAt ?? task.startAt ?? null;
+    const dueDate = due ? new Date(due) : null;
+    const dueTs = dueDate && Number.isFinite(dueDate.getTime()) ? dueDate.getTime() : null;
+    let score = 0;
+    const reasons: RecommendationCode[] = [];
+
+    if (task.status !== 'DONE') {
+      score += 30;
+      reasons.push('not_done');
+    } else {
+      score -= 40;
+      reasons.push('done');
+    }
+
+    if (task.status === 'IN_PROGRESS') {
+      score += 25;
+      reasons.push('in_progress');
+    } else if (task.status === 'TODO') {
+      score += 15;
+      reasons.push('todo');
+    } else if (task.status === 'BLOCKED') {
+      score += 10;
+      reasons.push('blocked');
+    }
+
+    if (dueTs === null) {
+      score += 5;
+      reasons.push('no_deadline');
+    } else {
+      const diff = dueTs - now.getTime();
+      if (diff < 0) {
+        score += 130;
+        reasons.push('overdue');
+      } else if (diff <= 6 * 60 * 60 * 1000) {
+        score += 95;
+        reasons.push('due_6h');
+      } else if (diff <= 24 * 60 * 60 * 1000) {
+        score += 70;
+        reasons.push('due_24h');
+      } else if (diff <= 72 * 60 * 60 * 1000) {
+        score += 40;
+        reasons.push('due_72h');
+      }
+    }
+
+    const priority = score >= 120 ? 'HIGH' : score >= 70 ? 'MEDIUM' : 'LOW';
+    return {
+      score,
+      reasons,
+      priority,
+      dueAt: dueTs ? new Date(dueTs).toISOString() : null,
+    };
+  }
+
+  async recommendations(userId: string, role: UserRole) {
+    const visibleTasks = await this.listVisible(userId, role);
+    const now = new Date();
+    const rows = (visibleTasks ?? [])
+      .map((task: any) => {
+        const recommendation = this.computeRecommendation(task, now);
+        return {
+          id: task.id,
+          titleZh: task.titleZh,
+          titleEn: task.titleEn,
+          titleRu: task.titleRu,
+          status: task.status,
+          dueAt: recommendation.dueAt,
+          recommendationPriority: recommendation.priority,
+          recommendationScore: recommendation.score,
+          recommendationReasons: recommendation.reasons,
+        };
+      })
+      .sort((a: any, b: any) => {
+        if (b.recommendationScore !== a.recommendationScore) {
+          return b.recommendationScore - a.recommendationScore;
+        }
+        const ad = a.dueAt ? new Date(a.dueAt).getTime() : Number.MAX_SAFE_INTEGER;
+        const bd = b.dueAt ? new Date(b.dueAt).getTime() : Number.MAX_SAFE_INTEGER;
+        return ad - bd;
+      })
+      .slice(0, 8)
+      .map((row, index) => ({
+        ...row,
+        order: index + 1,
+      }));
+
+    return {
+      generatedAt: now.toISOString(),
+      items: rows,
+    };
   }
 
   async listVisible(userId: string, role: UserRole) {

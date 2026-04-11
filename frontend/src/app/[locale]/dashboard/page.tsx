@@ -64,6 +64,22 @@ type UpcomingReminders = {
   tasks?: DashboardTaskRow[];
   windowDays?: number;
 };
+type RecommendationItem = {
+  id: string;
+  titleZh?: string;
+  titleEn?: string;
+  titleRu?: string;
+  status?: string;
+  dueAt?: string | null;
+  recommendationPriority?: 'HIGH' | 'MEDIUM' | 'LOW';
+  recommendationScore?: number;
+  recommendationReasons?: string[];
+  order?: number;
+};
+type TaskRecommendationsResponse = {
+  generatedAt?: string;
+  items?: RecommendationItem[];
+};
 type ReviewStats = {
   pending: number;
   approved: number;
@@ -82,6 +98,8 @@ type StudentTaskCardRow = {
   dueAt: string | null;
   score: number;
   priority: 'HIGH' | 'MEDIUM' | 'LOW';
+  reasons: string[];
+  order?: number;
 };
 type StudentDeadlineRow = {
   id: string;
@@ -229,6 +247,7 @@ export default function DashboardPage() {
   const [studentDataErr, setStudentDataErr] = useState<string | null>(null);
   const [scheduleEntries, setScheduleEntries] = useState<ScheduleEntry[]>([]);
   const [upcomingReminders, setUpcomingReminders] = useState<UpcomingReminders | null>(null);
+  const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
   const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
@@ -242,6 +261,7 @@ export default function DashboardPage() {
       setStudentDataErr(null);
       setScheduleEntries([]);
       setUpcomingReminders(null);
+      setRecommendations([]);
       setLoadingData(false);
       return;
     }
@@ -269,9 +289,10 @@ export default function DashboardPage() {
         }
 
         if (user.role === 'STUDENT') {
-          const [scheduleRes, reminderRes] = await Promise.allSettled([
+          const [scheduleRes, reminderRes, recommendRes] = await Promise.allSettled([
             apiFetch<ScheduleResponse>('/schedule', { token }),
             apiFetch<UpcomingReminders>('/reminders/upcoming', { token }),
+            apiFetch<TaskRecommendationsResponse>('/tasks/recommendations', { token }),
           ]);
           if (!active) return;
 
@@ -295,10 +316,21 @@ export default function DashboardPage() {
               prev || (reminderRes.reason instanceof Error ? reminderRes.reason.message : t('studentHome.partialLoad')),
             );
           }
+
+          if (recommendRes.status === 'fulfilled') {
+            setRecommendations(Array.isArray(recommendRes.value?.items) ? recommendRes.value.items : []);
+          } else {
+            setRecommendations([]);
+            setStudentDataErr((prev) =>
+              prev ||
+              (recommendRes.reason instanceof Error ? recommendRes.reason.message : t('studentHome.partialLoad')),
+            );
+          }
         } else if (active) {
           setStudentDataErr(null);
           setScheduleEntries([]);
           setUpcomingReminders(null);
+          setRecommendations([]);
         }
 
         if (user.role === 'LEAGUE_ADMIN') {
@@ -463,6 +495,18 @@ export default function DashboardPage() {
   }, [isStudent, scheduleEntries]);
   const todayTaskCards = useMemo<StudentTaskCardRow[]>(() => {
     if (!isStudent) return [];
+    if (recommendations.length > 0) {
+      return recommendations.slice(0, 5).map((row) => ({
+        id: row.id,
+        title: triField(row as unknown as Record<string, unknown>, 'title', locale) || t('quickEntry'),
+        dueAt: row.dueAt ?? null,
+        score: row.recommendationScore ?? 0,
+        priority: row.recommendationPriority ?? 'LOW',
+        reasons: Array.isArray(row.recommendationReasons) ? row.recommendationReasons : [],
+        order: row.order,
+      }));
+    }
+
     const now = new Date();
     const scoreFor = (task: DashboardTaskRow) => {
       const due = parseDateValue(task.endAt ?? task.dueAt ?? task.startAt ?? null);
@@ -493,6 +537,7 @@ export default function DashboardPage() {
           dueAt: due ? due.toISOString() : null,
           score,
           priority,
+          reasons: [],
         };
       })
       .sort((a, b) => b.score - a.score || String(a.dueAt ?? '').localeCompare(String(b.dueAt ?? '')));
@@ -502,7 +547,7 @@ export default function DashboardPage() {
       return due ? isSameDay(due, now) : false;
     });
     return (todayOnly.length > 0 ? todayOnly : rows).slice(0, 5);
-  }, [isStudent, locale, tasks, t]);
+  }, [isStudent, locale, recommendations, tasks, t]);
   const studentDeadlines = useMemo<StudentDeadlineRow[]>(() => {
     if (!isStudent) return [];
     const now = Date.now();
@@ -566,6 +611,32 @@ export default function DashboardPage() {
     }
     return rows.slice(0, 3);
   }, [isStudent, locale, studentDeadlines.length, t, todayCourses, todayTaskCards]);
+  const recommendationReasonLabel = (code: string) => {
+    switch (code) {
+      case 'overdue':
+        return t('studentHome.recommendations.reasons.overdue');
+      case 'due_6h':
+        return t('studentHome.recommendations.reasons.due6h');
+      case 'due_24h':
+        return t('studentHome.recommendations.reasons.due24h');
+      case 'due_72h':
+        return t('studentHome.recommendations.reasons.due72h');
+      case 'in_progress':
+        return t('studentHome.recommendations.reasons.inProgress');
+      case 'todo':
+        return t('studentHome.recommendations.reasons.todo');
+      case 'blocked':
+        return t('studentHome.recommendations.reasons.blocked');
+      case 'not_done':
+        return t('studentHome.recommendations.reasons.notDone');
+      case 'done':
+        return t('studentHome.recommendations.reasons.done');
+      case 'no_deadline':
+        return t('studentHome.recommendations.reasons.noDeadline');
+      default:
+        return t('studentHome.recommendations.reasons.default');
+    }
+  };
 
   const statCards = useMemo(() => {
     if (me?.role === 'LEAGUE_ADMIN') {
@@ -784,18 +855,26 @@ export default function DashboardPage() {
             </div>
 
             <div className="dashboard-student-card">
-              <div className="dashboard-student-card-title">{t('studentHome.tasks.title')}</div>
+              <div className="dashboard-student-card-title">{t('studentHome.recommendations.title')}</div>
               {todayTaskCards.length === 0 ? (
-                <p className="topbar-muted">{t('studentHome.tasks.empty')}</p>
+                <p className="topbar-muted">{t('studentHome.recommendations.empty')}</p>
               ) : (
                 <ul className="dashboard-student-list">
                   {todayTaskCards.map((row) => (
                     <li key={row.id} className="dashboard-student-item">
                       <div>
-                        <strong>{row.title}</strong>
+                        <strong>
+                          {row.order ? `${t('studentHome.recommendations.order', { order: row.order })} · ` : ''}
+                          {row.title}
+                        </strong>
                         <div className="topbar-muted" style={{ marginTop: 3, fontSize: 12 }}>
                           {t('common.due')}: {formatDateTimeShort(row.dueAt)}
                         </div>
+                        {row.reasons.length > 0 ? (
+                          <div className="topbar-muted" style={{ marginTop: 3, fontSize: 12 }}>
+                            {row.reasons.map((code) => recommendationReasonLabel(code)).join(' · ')}
+                          </div>
+                        ) : null}
                       </div>
                       <span
                         className={`dashboard-priority-pill dashboard-priority-${row.priority.toLowerCase()}`}

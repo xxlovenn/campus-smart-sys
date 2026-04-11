@@ -185,6 +185,24 @@
           "low": "Low"
         }
       },
+      "recommendations": {
+        "title": "Smart Task Recommendations (Today Order)",
+        "empty": "No recommended tasks right now",
+        "order": "Recommend #{order}",
+        "reasons": {
+          "overdue": "Overdue, handle immediately",
+          "due6h": "Due within 6 hours",
+          "due24h": "Due within 24 hours",
+          "due72h": "Due within 3 days",
+          "inProgress": "Already in progress, finish first",
+          "todo": "Not started yet, begin early",
+          "blocked": "Blocked, clear blockers soon",
+          "notDone": "Unfinished tasks come first",
+          "done": "Completed task, lower priority",
+          "noDeadline": "No explicit deadline",
+          "default": "Recommended by combined priority"
+        }
+      },
       "ai": {
         "title": "AI Suggestions",
         "empty": "No suggestions right now",

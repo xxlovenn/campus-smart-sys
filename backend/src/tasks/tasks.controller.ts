@@ -122,6 +122,12 @@ export class TasksController {
     return this.tasks.listVisible(req.user.id, req.user.role);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('recommendations')
+  recommendations(@Req() req: { user: { id: string; role: UserRole } }) {
+    return this.tasks.recommendations(req.user.id, req.user.role);
+  }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.LEAGUE_ADMIN)
   @Get('admin/overview')

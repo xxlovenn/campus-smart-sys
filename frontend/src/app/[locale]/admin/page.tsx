@@ -67,6 +67,23 @@ function formatDateTime(value?: string | null) {
   return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function timeToMs(value?: string | null) {
+  if (!value) return 0;
+  const d = new Date(value);
+  if (Number.isNaN(d.getTime())) return 0;
+  return d.getTime();
+}
+
+function waitingLabel(value?: string | null) {
+  const ts = timeToMs(value);
+  if (!ts) return '等待时长未知';
+  const diff = Math.max(0, Date.now() - ts);
+  const hours = Math.floor(diff / (60 * 60 * 1000));
+  if (hours < 24) return `已等待 ${hours} 小时`;
+  const days = Math.floor(hours / 24);
+  return `已等待 ${days} 天`;
+}
+
 export default function AdminPage() {
   const tc = useTranslations('common');
   const { token, ready } = useAuthGuard();
@@ -81,6 +98,9 @@ export default function AdminPage() {
   const [reason, setReason] = useState<Record<string, string>>({});
   const [taskRejectReason, setTaskRejectReason] = useState<Record<string, string>>({});
   const [reviewTarget, setReviewTarget] = useState<PendingProfile | null>(null);
+  const [activeProfileId, setActiveProfileId] = useState<string>('');
+  const [activeTaskId, setActiveTaskId] = useState<string>('');
+  const [reviewView, setReviewView] = useState<'records' | 'timeline'>('records');
   const [err, setErr] = useState<string | null>(null);
   const reviewTimeline = useMemo<ReviewTimelineItem[]>(() => {
     const profileRows: ReviewTimelineItem[] = profileRecords.map((row) => {
@@ -119,6 +139,80 @@ export default function AdminPage() {
       .sort((a, b) => b.ts - a.ts)
       .slice(0, 16);
   }, [profileRecords, taskReviewRecords]);
+  const latestPendingProfiles = useMemo(
+    () =>
+      [...pending]
+        .sort((a, b) => {
+          const statusA = a.reviewStatus === 'PENDING' ? 0 : 1;
+          const statusB = b.reviewStatus === 'PENDING' ? 0 : 1;
+          if (statusA !== statusB) return statusA - statusB;
+          const at = timeToMs(a.updatedAt);
+          const bt = timeToMs(b.updatedAt);
+          if (at === 0 || bt === 0) return at - bt;
+          return at - bt;
+        })
+        .slice(0, 5),
+    [pending],
+  );
+  const latestPendingTasks = useMemo(
+    () =>
+      [...taskRequests]
+        .sort((a, b) => {
+          const statusA = a.approvalStatus === 'PENDING_APPROVAL' ? 0 : 1;
+          const statusB = b.approvalStatus === 'PENDING_APPROVAL' ? 0 : 1;
+          if (statusA !== statusB) return statusA - statusB;
+          const at = timeToMs(a.createdAt);
+          const bt = timeToMs(b.createdAt);
+          if (at === 0 || bt === 0) return at - bt;
+          return at - bt;
+        })
+        .slice(0, 5),
+    [taskRequests],
+  );
+  const todayHandledCount = useMemo(() => {
+    const isToday = (value?: string | null) => {
+      if (!value) return false;
+      const d = new Date(value);
+      if (Number.isNaN(d.getTime())) return false;
+      const now = new Date();
+      return (
+        d.getFullYear() === now.getFullYear() &&
+        d.getMonth() === now.getMonth() &&
+        d.getDate() === now.getDate()
+      );
+    };
+    const profileToday = profileRecords.filter((row) => isToday(row.updatedAt)).length;
+    const taskToday = taskReviewRecords.filter((row) =>
+      isToday(row.approvedAt ?? row.updatedAt ?? row.createdAt),
+    ).length;
+    return profileToday + taskToday;
+  }, [profileRecords, taskReviewRecords]);
+  const recentRejectedCount = useMemo(() => {
+    const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+    const profileRejected = profileRecords.filter((row) => {
+      if (row.reviewStatus !== 'REJECTED' || !row.updatedAt) return false;
+      const ts = new Date(row.updatedAt).getTime();
+      return Number.isFinite(ts) && ts >= sevenDaysAgo;
+    }).length;
+    const taskRejected = taskReviewRecords.filter((row) => {
+      if (row.approvalStatus !== 'REJECTED') return false;
+      const raw = row.approvedAt ?? row.updatedAt ?? row.createdAt;
+      if (!raw) return false;
+      const ts = new Date(raw).getTime();
+      return Number.isFinite(ts) && ts >= sevenDaysAgo;
+    }).length;
+    return profileRejected + taskRejected;
+  }, [profileRecords, taskReviewRecords]);
+  const focusHint = useMemo(() => {
+    const p = latestPendingProfiles[0];
+    const t = latestPendingTasks[0];
+    if (p && t) {
+      return `优先处理：档案「${p.user.name}」与活动「${t.titleZh || t.titleEn || t.titleRu || '未命名'}」`;
+    }
+    if (p) return `优先处理：档案「${p.user.name}」`;
+    if (t) return `优先处理：活动「${t.titleZh || t.titleEn || t.titleRu || '未命名'}」`;
+    return '当前没有待审核事项，可查看底部审核记录。';
+  }, [latestPendingProfiles, latestPendingTasks]);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -156,6 +250,15 @@ export default function AdminPage() {
   useEffect(() => {
     load();
   }, [load]);
+
+  useEffect(() => {
+    if (!activeProfileId && pending.length > 0) {
+      setActiveProfileId(latestPendingProfiles[0]?.userId ?? pending[0].userId);
+    }
+    if (!activeTaskId && taskRequests.length > 0) {
+      setActiveTaskId(latestPendingTasks[0]?.id ?? taskRequests[0].id);
+    }
+  }, [activeProfileId, activeTaskId, latestPendingProfiles, latestPendingTasks, pending, taskRequests]);
 
   async function review(userId: string, approve: boolean) {
     if (!token) return;
@@ -221,6 +324,9 @@ export default function AdminPage() {
     }
   }
 
+  const activeProfile = pending.find((row) => row.userId === activeProfileId) ?? null;
+  const activeTask = taskRequests.find((row) => row.id === activeTaskId) ?? null;
+
   if (!ready || !token) {
     return (
       <div className="page-card">
@@ -252,159 +358,324 @@ export default function AdminPage() {
         {err && <div style={{ color: 'crimson' }}>{err}</div>}
 
         <section className="card-soft">
-          <h3 style={{ marginBottom: 12 }}>待审核档案（{pending.length}）</h3>
-          <ul className="list-clean">
-            {pending.map((row) => (
-              <li key={row.userId} className="list-item">
-                <div style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 10 }}>
-                    <span>
-                      {row.user.name} · {row.user.studentId ?? '—'} · {row.user.email}
-                    </span>
-                    <span className={approvalBadgeClass('PENDING_APPROVAL')}>{approvalLabel('PENDING_APPROVAL')}</span>
-                  </div>
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <input
-                      placeholder="驳回原因（可选）"
-                      value={reason[row.userId] ?? ''}
-                      onChange={(e) => setReason((s) => ({ ...s, [row.userId]: e.target.value }))}
-                      style={{ flex: 1, minWidth: 240 }}
-                    />
-                    <button type="button" onClick={() => review(row.userId, true)}>
-                      一键通过
-                    </button>
-                    <button type="button" className="logout-btn" onClick={() => review(row.userId, false)}>
-                      一键驳回
-                    </button>
-                    <button type="button" onClick={() => setReviewTarget(row)}>
-                      查看详情
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <h3 style={{ marginBottom: 12 }}>审核总览</h3>
+          <div className="dashboard-stats-grid">
+            <div className="dashboard-stat-card">
+              <div className="topbar-muted">待审核档案数</div>
+              <strong className="dashboard-stat-value">{pending.length}</strong>
+            </div>
+            <div className="dashboard-stat-card">
+              <div className="topbar-muted">待审核活动申请数</div>
+              <strong className="dashboard-stat-value">{taskRequests.length}</strong>
+            </div>
+            <div className="dashboard-stat-card">
+              <div className="topbar-muted">今日已处理数量</div>
+              <strong className="dashboard-stat-value">{todayHandledCount}</strong>
+            </div>
+            <div className="dashboard-stat-card">
+              <div className="topbar-muted">最近驳回数量（7天）</div>
+              <strong className="dashboard-stat-value">{recentRejectedCount}</strong>
+            </div>
+          </div>
         </section>
 
         <section className="card-soft">
-          <h3 style={{ marginBottom: 12 }}>社团活动申请审核（{taskRequests.length}）</h3>
-          <ul className="list-clean">
-            {taskRequests.map((task) => (
-              <li key={task.id} className="list-item">
-                <div style={{ display: 'grid', gap: 8 }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                    <strong>{task.titleZh || task.titleEn || task.titleRu || '—'}</strong>
-                    <span className={approvalBadgeClass(task.approvalStatus)}>{approvalLabel(task.approvalStatus)}</span>
-                  </div>
-                  <div className="topbar-muted">
-                    申请组织：{task.primaryOrg?.nameZh || task.primaryOrg?.nameEn || task.primaryOrg?.nameRu || '—'} ·
-                    申请人：{task.creator?.name || task.creator?.email || '—'}
-                  </div>
-                  {task.reviewNote ? <div className="topbar-muted">备注：{task.reviewNote}</div> : null}
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                    <input
-                      placeholder="驳回原因（可选）"
-                      value={taskRejectReason[task.id] ?? ''}
-                      onChange={(e) =>
-                        setTaskRejectReason((s) => ({ ...s, [task.id]: e.target.value }))
-                      }
-                      style={{ flex: 1, minWidth: 240 }}
-                    />
-                    <button type="button" onClick={() => reviewTaskRequest(task.id, true)}>
-                      一键通过
-                    </button>
-                    <button
-                      type="button"
-                      className="logout-btn"
-                      onClick={() => reviewTaskRequest(task.id, false)}
-                    >
-                      一键驳回
-                    </button>
-                  </div>
-                </div>
-              </li>
-            ))}
-          </ul>
+          <h3 style={{ marginBottom: 8 }}>今日优先处理</h3>
+          <p className="topbar-muted" style={{ marginTop: 0, marginBottom: 10 }}>
+            {focusHint}
+          </p>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              disabled={latestPendingProfiles.length === 0}
+              onClick={() => latestPendingProfiles[0] && setActiveProfileId(latestPendingProfiles[0].userId)}
+            >
+              跳到档案审核
+            </button>
+            <button
+              type="button"
+              disabled={latestPendingTasks.length === 0}
+              onClick={() => latestPendingTasks[0] && setActiveTaskId(latestPendingTasks[0].id)}
+            >
+              跳到活动审核
+            </button>
+          </div>
         </section>
 
         <section className="card-soft" style={{ display: 'grid', gap: 12 }}>
-          <h3 style={{ margin: 0 }}>审核记录（含备注）</h3>
+          <h3 style={{ margin: 0 }}>待处理事项</h3>
           <div className="grid-two">
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-              <strong>档案审核记录</strong>
-              <ul className="list-clean">
-                {profileRecords.map((row) => (
-                  <li key={row.userId} className="list-item">
-                    <div style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                        <span>
-                          {row.user.name} · {row.user.studentId ?? '—'}
-                        </span>
-                        <span className={approvalBadgeClass(row.reviewStatus)}>{approvalLabel(row.reviewStatus)}</span>
+              <strong>最新待审核档案（最多 5 条）</strong>
+              {latestPendingProfiles.length === 0 ? (
+                <p className="topbar-muted" style={{ margin: 0 }}>暂无待审核档案</p>
+              ) : (
+                <ul className="list-clean">
+                  {latestPendingProfiles.map((row, idx) => (
+                    <li
+                      key={row.userId}
+                      className={`list-item admin-todo-item ${idx < 2 ? 'admin-todo-item-urgent' : ''}`}
+                    >
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                          <strong>{row.user.name}</strong>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            {idx === 0 ? <span className="badge badge-red">最紧急</span> : null}
+                            <span className={approvalBadgeClass('PENDING_APPROVAL')}>{approvalLabel('PENDING_APPROVAL')}</span>
+                          </div>
+                        </div>
+                        <div className="topbar-muted admin-todo-meta">申请人：{row.user.email}</div>
+                        <div className="topbar-muted admin-todo-meta">审核对象：学生档案</div>
+                        <div className="topbar-muted admin-todo-meta">提交时间：{formatDateTime(row.updatedAt)}</div>
+                        <div className="admin-todo-wait">{waitingLabel(row.updatedAt)}</div>
+                        <div className="admin-todo-actions">
+                          <button type="button" onClick={() => review(row.userId, true)}>通过</button>
+                          <button type="button" className="logout-btn" onClick={() => review(row.userId, false)}>驳回</button>
+                          <button type="button" onClick={() => setReviewTarget(row)}>查看详情</button>
+                        </div>
                       </div>
-                      <div className="topbar-muted">时间：{formatDateTime(row.updatedAt)}</div>
-                      {row.rejectReason ? <div className="topbar-muted">备注：{row.rejectReason}</div> : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
 
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-              <strong>任务审核记录</strong>
-              <ul className="list-clean">
-                {taskReviewRecords.map((row) => (
-                  <li key={row.id} className="list-item">
-                    <div style={{ display: 'grid', gap: 6 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                        <span>{row.titleZh || row.titleEn || row.titleRu || '—'}</span>
-                        <span className={approvalBadgeClass(row.approvalStatus)}>{approvalLabel(row.approvalStatus)}</span>
+              <strong>最新待审核活动申请（最多 5 条）</strong>
+              {latestPendingTasks.length === 0 ? (
+                <p className="topbar-muted" style={{ margin: 0 }}>暂无待审核活动申请</p>
+              ) : (
+                <ul className="list-clean">
+                  {latestPendingTasks.map((task, idx) => (
+                    <li
+                      key={task.id}
+                      className={`list-item admin-todo-item ${idx < 2 ? 'admin-todo-item-urgent' : ''}`}
+                    >
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                          <strong>{task.titleZh || task.titleEn || task.titleRu || '—'}</strong>
+                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
+                            {idx === 0 ? <span className="badge badge-red">最紧急</span> : null}
+                            <span className={approvalBadgeClass(task.approvalStatus)}>{approvalLabel(task.approvalStatus)}</span>
+                          </div>
+                        </div>
+                        <div className="topbar-muted admin-todo-meta">申请人：{task.creator?.name || task.creator?.email || '—'}</div>
+                        <div className="topbar-muted admin-todo-meta">
+                          申请组织：{task.primaryOrg?.nameZh || task.primaryOrg?.nameEn || task.primaryOrg?.nameRu || '—'}
+                        </div>
+                        <div className="topbar-muted admin-todo-meta">审核对象：社团活动申请</div>
+                        <div className="topbar-muted admin-todo-meta">提交时间：{formatDateTime(task.createdAt)}</div>
+                        <div className="admin-todo-wait">{waitingLabel(task.createdAt)}</div>
+                        <div className="admin-todo-actions">
+                          <button type="button" onClick={() => reviewTaskRequest(task.id, true)}>通过</button>
+                          <button type="button" className="logout-btn" onClick={() => reviewTaskRequest(task.id, false)}>驳回</button>
+                          <button type="button" onClick={() => setActiveTaskId(task.id)}>查看详情</button>
+                        </div>
                       </div>
-                      <div className="topbar-muted">
-                        审核人：{row.reviewedBy?.name || row.reviewedBy?.email || '—'} · 时间：
-                        {formatDateTime(row.approvedAt ?? row.updatedAt ?? row.createdAt)}
-                      </div>
-                      {row.reviewNote ? <div className="topbar-muted">备注：{row.reviewNote}</div> : null}
-                    </div>
-                  </li>
-                ))}
-              </ul>
+                    </li>
+                  ))}
+                </ul>
+              )}
             </div>
           </div>
+        </section>
 
-          <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-            <strong>审核时间线（最新 16 条）</strong>
-            {reviewTimeline.length === 0 ? (
-              <p className="topbar-muted" style={{ margin: 0 }}>
-                暂无审核时间线数据
-              </p>
-            ) : (
-              <ul className="audit-timeline">
-                {reviewTimeline.map((row) => (
-                  <li key={row.id} className="audit-timeline-item">
-                    <span
-                      className={`audit-timeline-dot ${
-                        row.status === 'APPROVED'
-                          ? 'audit-timeline-dot-ok'
-                          : row.status === 'REJECTED'
-                            ? 'audit-timeline-dot-no'
-                            : 'audit-timeline-dot-pending'
-                      }`}
-                    />
-                    <div className="audit-timeline-main">
-                      <div className="audit-timeline-head">
-                        <strong>{row.title}</strong>
-                        <span className={approvalBadgeClass(row.status)}>{approvalLabel(row.status)}</span>
-                      </div>
-                      <div className="topbar-muted">审核人：{row.actor}</div>
-                      <div className="topbar-muted">备注：{row.note}</div>
-                      <div className="topbar-muted">{formatDateTime(row.at)}</div>
-                    </div>
-                  </li>
+        <section className="card-soft" style={{ display: 'grid', gap: 12 }}>
+          <h3 style={{ margin: 0 }}>审核操作区</h3>
+          <div className="grid-two">
+            <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
+              <strong>档案审核操作</strong>
+              <select value={activeProfileId} onChange={(e) => setActiveProfileId(e.target.value)}>
+                <option value="">请选择待审核档案</option>
+                {pending.map((row) => (
+                  <option key={row.userId} value={row.userId}>
+                    {row.user.name} · {row.user.studentId ?? '—'}
+                  </option>
                 ))}
-              </ul>
-            )}
+              </select>
+              <div className="topbar-muted">
+                当前对象：{activeProfile ? `${activeProfile.user.name}（${activeProfile.user.email}）` : '未选择'}
+              </div>
+              {activeProfile ? (
+                <div className="topbar-muted">
+                  学号：{activeProfile.user.studentId ?? '—'} · 提交时间：{formatDateTime(activeProfile.updatedAt)}
+                </div>
+              ) : null}
+              <textarea
+                placeholder="档案驳回备注（可选）"
+                value={activeProfileId ? (reason[activeProfileId] ?? '') : ''}
+                onChange={(e) =>
+                  activeProfileId
+                    ? setReason((s) => ({ ...s, [activeProfileId]: e.target.value }))
+                    : undefined
+                }
+                rows={3}
+              />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" disabled={!activeProfileId} onClick={() => activeProfileId && review(activeProfileId, true)}>
+                  一键通过
+                </button>
+                <button
+                  type="button"
+                  className="logout-btn"
+                  disabled={!activeProfileId}
+                  onClick={() => activeProfileId && review(activeProfileId, false)}
+                >
+                  一键驳回
+                </button>
+                <button type="button" disabled={!activeProfile} onClick={() => activeProfile && setReviewTarget(activeProfile)}>
+                  查看详情
+                </button>
+              </div>
+            </div>
+
+            <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
+              <strong>活动申请审核操作</strong>
+              <select value={activeTaskId} onChange={(e) => setActiveTaskId(e.target.value)}>
+                <option value="">请选择待审核活动申请</option>
+                {taskRequests.map((row) => (
+                  <option key={row.id} value={row.id}>
+                    {row.titleZh || row.titleEn || row.titleRu || '—'}
+                  </option>
+                ))}
+              </select>
+              <div className="topbar-muted">
+                当前对象：{activeTask ? `${activeTask.creator?.name || activeTask.creator?.email || '—'}` : '未选择'}
+              </div>
+              {activeTask ? (
+                <>
+                  <div className="topbar-muted">
+                    标题：{activeTask.titleZh || activeTask.titleEn || activeTask.titleRu || '—'}
+                  </div>
+                  <div className="topbar-muted">
+                    组织：{activeTask.primaryOrg?.nameZh || activeTask.primaryOrg?.nameEn || activeTask.primaryOrg?.nameRu || '—'} ·
+                    提交时间：{formatDateTime(activeTask.createdAt)}
+                  </div>
+                </>
+              ) : null}
+              <textarea
+                placeholder="活动申请驳回备注（可选）"
+                value={activeTaskId ? (taskRejectReason[activeTaskId] ?? '') : ''}
+                onChange={(e) =>
+                  activeTaskId
+                    ? setTaskRejectReason((s) => ({ ...s, [activeTaskId]: e.target.value }))
+                    : undefined
+                }
+                rows={3}
+              />
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" disabled={!activeTaskId} onClick={() => activeTaskId && reviewTaskRequest(activeTaskId, true)}>
+                  一键通过
+                </button>
+                <button
+                  type="button"
+                  className="logout-btn"
+                  disabled={!activeTaskId}
+                  onClick={() => activeTaskId && reviewTaskRequest(activeTaskId, false)}
+                >
+                  一键驳回
+                </button>
+              </div>
+            </div>
           </div>
+        </section>
+
+        <section className="card-soft" style={{ display: 'grid', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            <button
+              type="button"
+              className={`dashboard-chip ${reviewView === 'records' ? 'dashboard-chip-active' : ''}`}
+              onClick={() => setReviewView('records')}
+            >
+              审核记录
+            </button>
+            <button
+              type="button"
+              className={`dashboard-chip ${reviewView === 'timeline' ? 'dashboard-chip-active' : ''}`}
+              onClick={() => setReviewView('timeline')}
+            >
+              审核时间线
+            </button>
+          </div>
+
+          {reviewView === 'records' ? (
+            <div className="grid-two">
+              <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
+                <strong>档案审核记录</strong>
+                <ul className="list-clean">
+                  {profileRecords.map((row) => (
+                    <li key={row.userId} className="list-item">
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                          <span>
+                            {row.user.name} · {row.user.studentId ?? '—'}
+                          </span>
+                          <span className={approvalBadgeClass(row.reviewStatus)}>{approvalLabel(row.reviewStatus)}</span>
+                        </div>
+                        <div className="topbar-muted">时间：{formatDateTime(row.updatedAt)}</div>
+                        {row.rejectReason ? <div className="topbar-muted">备注：{row.rejectReason}</div> : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+
+              <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
+                <strong>任务审核记录</strong>
+                <ul className="list-clean">
+                  {taskReviewRecords.map((row) => (
+                    <li key={row.id} className="list-item">
+                      <div style={{ display: 'grid', gap: 6 }}>
+                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                          <span>{row.titleZh || row.titleEn || row.titleRu || '—'}</span>
+                          <span className={approvalBadgeClass(row.approvalStatus)}>{approvalLabel(row.approvalStatus)}</span>
+                        </div>
+                        <div className="topbar-muted">
+                          审核人：{row.reviewedBy?.name || row.reviewedBy?.email || '—'} · 时间：
+                          {formatDateTime(row.approvedAt ?? row.updatedAt ?? row.createdAt)}
+                        </div>
+                        {row.reviewNote ? <div className="topbar-muted">备注：{row.reviewNote}</div> : null}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          ) : (
+            <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
+              <strong>审核时间线（最新 16 条）</strong>
+              {reviewTimeline.length === 0 ? (
+                <p className="topbar-muted" style={{ margin: 0 }}>
+                  暂无审核时间线数据
+                </p>
+              ) : (
+                <ul className="audit-timeline">
+                  {reviewTimeline.map((row) => (
+                    <li key={row.id} className="audit-timeline-item">
+                      <span
+                        className={`audit-timeline-dot ${
+                          row.status === 'APPROVED'
+                            ? 'audit-timeline-dot-ok'
+                            : row.status === 'REJECTED'
+                              ? 'audit-timeline-dot-no'
+                              : 'audit-timeline-dot-pending'
+                        }`}
+                      />
+                      <div className="audit-timeline-main">
+                        <div className="audit-timeline-head">
+                          <strong>{row.title}</strong>
+                          <span className={approvalBadgeClass(row.status)}>{approvalLabel(row.status)}</span>
+                        </div>
+                        <div className="topbar-muted">审核人：{row.actor}</div>
+                        <div className="topbar-muted">备注：{row.note}</div>
+                        <div className="topbar-muted">{formatDateTime(row.at)}</div>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          )}
         </section>
 
         <section className="card-soft" style={{ display: 'grid', gap: 12 }}>

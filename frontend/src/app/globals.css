@@ -1055,6 +1055,34 @@
   flex-wrap: wrap;
 }
 
+.admin-todo-item {
+  border-left: 3px solid transparent;
+  padding-left: 10px;
+}
+
+.admin-todo-item-urgent {
+  border-left-color: #dc2626;
+  background: #fff7f7;
+  border-radius: 8px;
+  padding: 10px 10px 10px 12px;
+}
+
+.admin-todo-meta {
+  font-size: 12px;
+}
+
+.admin-todo-wait {
+  font-size: 12px;
+  font-weight: 700;
+  color: #b45309;
+}
+
+.admin-todo-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 960px) {
   .task-flow-board {
     grid-template-columns: 1fr;

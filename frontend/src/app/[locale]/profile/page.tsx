@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth-storage';
+import { Modal } from '@/components/Modal';
 import { triField } from '@/lib/tri';
 
 type Me = {
@@ -13,6 +14,7 @@ type Me = {
   email?: string;
   role: string;
   studentId?: string;
+  idCardMasked?: string | null;
 };
 
 type Profile = {
@@ -36,15 +38,38 @@ type PendingProfile = Profile & {
   };
 };
 
+type AdminStudentRow = {
+  id: string;
+  name: string;
+  email: string;
+  studentId?: string | null;
+  idCardMasked?: string | null;
+  phone?: string | null;
+  reviewStatus: string;
+};
+
+type AdminStudentDetail = {
+  user: {
+    id: string;
+    name?: string;
+    email?: string;
+    studentId?: string | null;
+    idCard?: string | null;
+    phone?: string | null;
+  };
+  profile: Profile;
+};
+
 export default function ProfilePage() {
   const locale = useLocale();
   const token = getToken();
 
   const [me, setMe] = useState<Me | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
-  const [pending, setPending] = useState<PendingProfile[]>([]);
-  const [searchUserId, setSearchUserId] = useState('');
-  const [searchedProfile, setSearchedProfile] = useState<Profile | null>(null);
+  const [students, setStudents] = useState<AdminStudentRow[]>([]);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [searchMode, setSearchMode] = useState<'name' | 'studentId' | 'idCard'>('name');
+  const [studentDetail, setStudentDetail] = useState<AdminStudentDetail | null>(null);
   const [identity, setIdentity] = useState({ zh: '', en: '', ru: '' });
   const [github, setGithub] = useState('');
   const [award, setAward] = useState({ zh: '', en: '', ru: '', proof: '' });
@@ -55,6 +80,16 @@ export default function ProfilePage() {
     nz: '',
     ne: '',
     nr: '',
+  });
+  const [adminEdit, setAdminEdit] = useState({
+    name: '',
+    studentId: '',
+    idCard: '',
+    phone: '',
+    githubUrl: '',
+    identityZh: '',
+    identityEn: '',
+    identityRu: '',
   });
   const [err, setErr] = useState<string | null>(null);
 
@@ -67,8 +102,11 @@ export default function ProfilePage() {
       setMe(currentUser);
 
       if (currentUser.role === 'LEAGUE_ADMIN') {
-        const pendingList = await apiFetch<PendingProfile[]>('/profile/admin/pending', { token });
-        setPending(Array.isArray(pendingList) ? pendingList : []);
+        const list = await apiFetch<AdminStudentRow[]>(
+          `/profile/admin/students?keyword=${encodeURIComponent(searchKeyword)}&mode=${searchMode}`,
+          { token },
+        );
+        setStudents(Array.isArray(list) ? list : []);
         setProfile(null);
         return;
       }
@@ -84,7 +122,7 @@ export default function ProfilePage() {
     } catch (e) {
       setErr(e instanceof Error ? e.message : '加载失败');
     }
-  }, [token]);
+  }, [token, searchKeyword, searchMode]);
 
   useEffect(() => {
     load();
@@ -157,32 +195,40 @@ export default function ProfilePage() {
     }
   }
 
-  async function searchStudentProfile() {
-    if (!token || !searchUserId.trim()) return;
+  async function openStudentDetail(userId: string) {
+    if (!token) return;
 
     try {
-      const prof = await apiFetch<Profile>(`/profile/admin/user/${searchUserId.trim()}`, { token });
-      setSearchedProfile(prof);
+      const detail = await apiFetch<AdminStudentDetail>(`/profile/admin/user/${userId}`, { token });
+      setStudentDetail(detail);
+      setAdminEdit({
+        name: detail.user.name ?? '',
+        studentId: detail.user.studentId ?? '',
+        idCard: detail.user.idCard ?? '',
+        phone: detail.user.phone ?? '',
+        githubUrl: detail.profile.githubUrl ?? '',
+        identityZh: detail.profile.identityZh ?? '',
+        identityEn: detail.profile.identityEn ?? '',
+        identityRu: detail.profile.identityRu ?? '',
+      });
     } catch (e) {
       setErr(e instanceof Error ? e.message : '查询失败');
     }
   }
 
-  async function review(userId: string, approve: boolean) {
-    if (!token) return;
+  async function saveStudentDetail() {
+    if (!token || !studentDetail) return;
 
     try {
-      await apiFetch(`/profile/admin/${userId}/review`, {
+      await apiFetch(`/profile/admin/user/${studentDetail.user.id}`, {
         method: 'PATCH',
         token,
-        body: JSON.stringify({
-          approve,
-          reason: approve ? undefined : '未通过审核',
-        }),
+        body: JSON.stringify(adminEdit),
       });
-      load();
+      setStudentDetail(null);
+      await load();
     } catch (e) {
-      setErr(e instanceof Error ? e.message : '审核失败');
+      setErr(e instanceof Error ? e.message : '保存失败');
     }
   }
 
@@ -212,7 +258,7 @@ export default function ProfilePage() {
             ? '查看并维护个人档案、奖项与能力标签'
             : isOrgAdmin
             ? '查看组织成员信息与个人档案示例'
-            : '查询学生档案并处理待审核资料'}
+            : '拉取学生档案列表并支持检索与修改'}
         </p>
 
         {err && (
@@ -380,112 +426,157 @@ export default function ProfilePage() {
         )}
 
         {isLeagueAdmin && (
-          <>
-            <div className="page-section">
-              <div className="card-soft">
-                <h3 style={{ marginBottom: 14 }}>查询学生档案</h3>
-                <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
-                  <input
-                    placeholder="输入学生 userId"
-                    value={searchUserId}
-                    onChange={(e) => setSearchUserId(e.target.value)}
-                    style={{ minWidth: 320 }}
-                  />
-                  <button type="button" onClick={searchStudentProfile}>
-                    查询
-                  </button>
-                </div>
+          <div className="page-section">
+            <div className="card-soft" style={{ display: 'grid', gap: 12 }}>
+              <h3 style={{ marginBottom: 0 }}>学生档案列表</h3>
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                <select
+                  value={searchMode}
+                  onChange={(e) => setSearchMode(e.target.value as 'name' | 'studentId' | 'idCard')}
+                  style={{ maxWidth: 180 }}
+                >
+                  <option value="name">按姓名</option>
+                  <option value="studentId">按学号</option>
+                  <option value="idCard">按身份证</option>
+                </select>
+                <input
+                  placeholder="输入搜索关键词"
+                  value={searchKeyword}
+                  onChange={(e) => setSearchKeyword(e.target.value)}
+                  style={{ minWidth: 280 }}
+                />
+                <button type="button" onClick={load}>
+                  查询
+                </button>
               </div>
+              <ul className="list-clean">
+                {students.map((row) => (
+                  <li key={row.id} className="list-item">
+                    <div
+                      style={{
+                        display: 'flex',
+                        justifyContent: 'space-between',
+                        gap: 10,
+                        flexWrap: 'wrap',
+                        alignItems: 'center',
+                      }}
+                    >
+                      <div>
+                        <strong>{row.name}</strong> · {row.studentId || '—'} · {row.idCardMasked || '—'}
+                      </div>
+                      <button type="button" onClick={() => openStudentDetail(row.id)}>
+                        查看并修改
+                      </button>
+                    </div>
+                  </li>
+                ))}
+              </ul>
             </div>
-
-            {searchedProfile && (
-              <div className="page-section">
-                <div className="card-soft">
-                  <h3 style={{ marginBottom: 14 }}>学生档案详情</h3>
-                  <p style={{ marginBottom: 8 }}>
-                    GitHub：{searchedProfile.githubUrl || '未填写'}
-                  </p>
-                  <p style={{ marginBottom: 8 }}>
-                    身份说明：{triField(searchedProfile as unknown as Record<string, unknown>, 'identity', locale) || '未填写'}
-                  </p>
-                  <p style={{ marginBottom: 8 }}>
-                    审核状态：{searchedProfile.reviewStatus}
-                  </p>
-
-                  <h4 style={{ marginTop: 16, marginBottom: 8 }}>奖项</h4>
-                  <ul className="list-clean">
-                    {searchedProfile.awards.map((a) => (
-                      <li key={String(a.id)} className="list-item">
-                        {triField(a as Record<string, unknown>, 'title', locale)}
-                      </li>
-                    ))}
-                  </ul>
-
-                  <h4 style={{ marginTop: 16, marginBottom: 8 }}>标签</h4>
-                  <ul className="list-clean">
-                    {searchedProfile.tags.map((x) => {
-                      const o = x as Record<string, unknown>;
-                      return (
-                        <li key={String(o.id)} className="list-item">
-                          {triField(o, 'category', locale)} · {triField(o, 'name', locale)}
-                        </li>
-                      );
-                    })}
-                  </ul>
-                </div>
-              </div>
-            )}
-
-            <div className="page-section">
-              <div className="card-soft">
-                <h3 style={{ marginBottom: 14 }}>待审核档案</h3>
-
-                {pending.length === 0 ? (
-                  <div className="topbar-muted">暂无待审核档案</div>
-                ) : (
-                  <ul className="list-clean">
-                    {pending.map((item) => (
-                      <li key={String(item.user?.id)} className="list-item">
-                        <div
-                          style={{
-                            display: 'flex',
-                            justifyContent: 'space-between',
-                            gap: 16,
-                            flexWrap: 'wrap',
-                          }}
-                        >
-                          <div>
-                            <strong>{item.user?.name || '未命名学生'}</strong>
-                            <div className="topbar-muted" style={{ marginTop: 6 }}>
-                              {item.user?.email || '—'} · {item.user?.studentId || '—'}
-                            </div>
-                            <div className="topbar-muted" style={{ marginTop: 4 }}>
-                              状态：{item.reviewStatus}
-                            </div>
-                          </div>
-
-                          <div style={{ display: 'flex', gap: 10 }}>
-                            <button type="button" onClick={() => review(String(item.user?.id), true)}>
-                              通过
-                            </button>
-                            <button
-                              type="button"
-                              className="logout-btn"
-                              onClick={() => review(String(item.user?.id), false)}
-                            >
-                              拒绝
-                            </button>
-                          </div>
-                        </div>
-                      </li>
-                    ))}
-                  </ul>
-                )}
-              </div>
-            </div>
-          </>
+          </div>
         )}
       </div>
+
+      <Modal
+        open={!!studentDetail}
+        title={studentDetail ? `学生档案：${studentDetail.user.name || studentDetail.user.email}` : '学生档案'}
+        onClose={() => setStudentDetail(null)}
+        width={880}
+      >
+        {studentDetail ? (
+          <div style={{ display: 'grid', gap: 12 }}>
+            <div className="grid-two">
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span className="topbar-muted">姓名</span>
+                <input
+                  value={adminEdit.name}
+                  onChange={(e) => setAdminEdit((s) => ({ ...s, name: e.target.value }))}
+                />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span className="topbar-muted">学号</span>
+                <input
+                  value={adminEdit.studentId}
+                  onChange={(e) => setAdminEdit((s) => ({ ...s, studentId: e.target.value }))}
+                />
+              </label>
+            </div>
+            <div className="grid-two">
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span className="topbar-muted">身份证号（团委可见）</span>
+                <input
+                  value={adminEdit.idCard}
+                  onChange={(e) => setAdminEdit((s) => ({ ...s, idCard: e.target.value }))}
+                />
+              </label>
+              <label style={{ display: 'grid', gap: 6 }}>
+                <span className="topbar-muted">手机号</span>
+                <input
+                  value={adminEdit.phone}
+                  onChange={(e) => setAdminEdit((s) => ({ ...s, phone: e.target.value }))}
+                />
+              </label>
+            </div>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">GitHub</span>
+              <input
+                value={adminEdit.githubUrl}
+                onChange={(e) => setAdminEdit((s) => ({ ...s, githubUrl: e.target.value }))}
+              />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">身份说明（中文）</span>
+              <textarea
+                rows={2}
+                value={adminEdit.identityZh}
+                onChange={(e) => setAdminEdit((s) => ({ ...s, identityZh: e.target.value }))}
+              />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">Identity (EN)</span>
+              <textarea
+                rows={2}
+                value={adminEdit.identityEn}
+                onChange={(e) => setAdminEdit((s) => ({ ...s, identityEn: e.target.value }))}
+              />
+            </label>
+            <label style={{ display: 'grid', gap: 6 }}>
+              <span className="topbar-muted">Идентичность (RU)</span>
+              <textarea
+                rows={2}
+                value={adminEdit.identityRu}
+                onChange={(e) => setAdminEdit((s) => ({ ...s, identityRu: e.target.value }))}
+              />
+            </label>
+
+            <div>
+              <h4 style={{ marginBottom: 8 }}>奖项</h4>
+              <ul className="list-clean">
+                {studentDetail.profile.awards.map((a) => (
+                  <li key={String(a.id)} className="list-item">
+                    {triField(a as Record<string, unknown>, 'title', locale)}
+                  </li>
+                ))}
+              </ul>
+            </div>
+            <div>
+              <h4 style={{ marginBottom: 8 }}>标签</h4>
+              <ul className="list-clean">
+                {studentDetail.profile.tags.map((x) => {
+                  const o = x as Record<string, unknown>;
+                  return (
+                    <li key={String(o.id)} className="list-item">
+                      {triField(o, 'category', locale)} · {triField(o, 'name', locale)}
+                    </li>
+                  );
+                })}
+              </ul>
+            </div>
+            <button type="button" onClick={saveStudentDetail}>
+              保存修改并同步
+            </button>
+          </div>
+        ) : null}
+      </Modal>
     </div>
   );
 }

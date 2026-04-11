@@ -18,7 +18,7 @@ async function main() {
 
   const league = await prisma.user.upsert({
     where: { email: 'league@campus.demo' },
-    update: {},
+    update: { idCard: '110101198001011234' },
     create: {
       id: randomUUID(),
       email: 'league@campus.demo',
@@ -26,13 +26,14 @@ async function main() {
       name: '团委管理员',
       studentId: 'ADMIN001',
       phone: '13800000001',
+      idCard: '110101198001011234',
       role: UserRole.LEAGUE_ADMIN,
     },
   });
 
   const orgAdmin = await prisma.user.upsert({
     where: { email: 'org@campus.demo' },
-    update: { role: UserRole.STUDENT },
+    update: { role: UserRole.STUDENT, idCard: '110101199501011111' },
     create: {
       id: randomUUID(),
       email: 'org@campus.demo',
@@ -40,13 +41,14 @@ async function main() {
       name: '社团负责人',
       studentId: 'ORG001',
       phone: '13800000002',
+      idCard: '110101199501011111',
       role: UserRole.STUDENT,
     },
   });
 
   const student = await prisma.user.upsert({
     where: { email: 'student@campus.demo' },
-    update: {},
+    update: { idCard: '110101200601011234' },
     create: {
       id: randomUUID(),
       email: 'student@campus.demo',
@@ -54,35 +56,54 @@ async function main() {
       name: '演示学生',
       studentId: '20260001',
       phone: '13800000003',
+      idCard: '110101200601011234',
       role: UserRole.STUDENT,
     },
   });
 
   const org1 = await prisma.organization.upsert({
     where: { id: '00000000-0000-4000-8000-000000000001' },
-    update: {},
+    update: {
+      descriptionZh: '面向全校的计算机技术交流社团',
+      descriptionEn: 'Campus-wide technology community',
+      descriptionRu: 'Техническое сообщество кампуса',
+      leaderUserId: orgAdmin.id,
+    },
     create: {
       id: '00000000-0000-4000-8000-000000000001',
       nameZh: '计算机协会',
       nameEn: 'Computer Association',
       nameRu: 'Компьютерная ассоциация',
+      descriptionZh: '面向全校的计算机技术交流社团',
+      descriptionEn: 'Campus-wide technology community',
+      descriptionRu: 'Техническое сообщество кампуса',
       typeZh: '社团',
       typeEn: 'Club',
       typeRu: 'Клуб',
+      leaderUserId: orgAdmin.id,
     },
   });
 
   const org2 = await prisma.organization.upsert({
     where: { id: '00000000-0000-4000-8000-000000000002' },
-    update: {},
+    update: {
+      descriptionZh: '负责校园学生事务协调',
+      descriptionEn: 'Coordinates student affairs on campus',
+      descriptionRu: 'Координация студенческих дел',
+      leaderUserId: league.id,
+    },
     create: {
       id: '00000000-0000-4000-8000-000000000002',
       nameZh: '学生会',
       nameEn: 'Student Union',
       nameRu: 'Студенческий совет',
+      descriptionZh: '负责校园学生事务协调',
+      descriptionEn: 'Coordinates student affairs on campus',
+      descriptionRu: 'Координация студенческих дел',
       typeZh: '学生会',
       typeEn: 'Student union',
       typeRu: 'Студсовет',
+      leaderUserId: league.id,
     },
   });
 

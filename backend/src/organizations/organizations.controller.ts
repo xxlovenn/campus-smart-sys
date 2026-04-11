@@ -1,6 +1,17 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
-import { IsString, MinLength } from 'class-validator';
-import { UserRole } from '@prisma/client';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  ParseUUIDPipe,
+  Post,
+  Req,
+  UseGuards,
+} from '@nestjs/common';
+import { IsEnum, IsOptional, IsString, IsUUID, MinLength } from 'class-validator';
+import { OrganizationMemberRole, UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
 import { RolesGuard } from '../auth/roles.guard';
@@ -16,6 +27,15 @@ class CreateOrgDto {
   @IsString()
   @MinLength(1)
   nameRu!: string;
+  @IsOptional()
+  @IsString()
+  descriptionZh?: string;
+  @IsOptional()
+  @IsString()
+  descriptionEn?: string;
+  @IsOptional()
+  @IsString()
+  descriptionRu?: string;
   @IsString()
   @MinLength(1)
   typeZh!: string;
@@ -25,6 +45,65 @@ class CreateOrgDto {
   @IsString()
   @MinLength(1)
   typeRu!: string;
+  @IsOptional()
+  @IsUUID()
+  leaderUserId?: string;
+}
+
+class DeleteOrgDto {
+  @IsString()
+  @MinLength(1)
+  operatorName!: string;
+}
+
+class AddOrgMemberDto {
+  @IsUUID()
+  userId!: string;
+  @IsOptional()
+  @IsEnum(OrganizationMemberRole)
+  memberRole?: OrganizationMemberRole;
+  @IsOptional()
+  @IsString()
+  roleZh?: string;
+  @IsOptional()
+  @IsString()
+  roleEn?: string;
+  @IsOptional()
+  @IsString()
+  roleRu?: string;
+}
+
+class UpdateOrgDto {
+  @IsString()
+  @MinLength(1)
+  nameZh!: string;
+  @IsString()
+  @MinLength(1)
+  nameEn!: string;
+  @IsString()
+  @MinLength(1)
+  nameRu!: string;
+  @IsOptional()
+  @IsString()
+  descriptionZh?: string;
+  @IsOptional()
+  @IsString()
+  descriptionEn?: string;
+  @IsOptional()
+  @IsString()
+  descriptionRu?: string;
+  @IsString()
+  @MinLength(1)
+  typeZh!: string;
+  @IsString()
+  @MinLength(1)
+  typeEn!: string;
+  @IsString()
+  @MinLength(1)
+  typeRu!: string;
+  @IsOptional()
+  @IsUUID()
+  leaderUserId?: string;
 }
 
 @Controller('organizations')
@@ -42,5 +121,59 @@ export class OrganizationsController {
   @Post()
   create(@Body() body: CreateOrgDto) {
     return this.orgs.create(body);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Get('admin/list')
+  adminList() {
+    return this.orgs.adminList();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Get(':id/detail')
+  detail(@Param('id', new ParseUUIDPipe()) id: string) {
+    return this.orgs.detail(id);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Patch(':id')
+  update(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: UpdateOrgDto,
+  ) {
+    return this.orgs.update(id, body);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Post(':id/members')
+  addMember(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: AddOrgMemberDto,
+  ) {
+    return this.orgs.addMember(id, body);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Delete(':id/members/:userId')
+  removeMember(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Param('userId', new ParseUUIDPipe()) userId: string,
+  ) {
+    return this.orgs.removeMember(id, userId);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Delete(':id')
+  remove(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() body: DeleteOrgDto,
+  ) {
+    return this.orgs.remove(id, body.operatorName);
   }
 }

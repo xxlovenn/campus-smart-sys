@@ -6,10 +6,11 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
-import { IsBoolean, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsBoolean, IsIn, IsOptional, IsString, MinLength } from 'class-validator';
 import { UserRole } from '@prisma/client';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { Roles } from '../auth/roles.decorator';
@@ -75,6 +76,43 @@ class ReviewDto {
   reason?: string;
 }
 
+class SearchStudentsQuery {
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+  @IsOptional()
+  @IsString()
+  @IsIn(['name', 'studentId', 'idCard'])
+  mode?: 'name' | 'studentId' | 'idCard';
+}
+
+class AdminUpdateUserProfileDto {
+  @IsOptional()
+  @IsString()
+  name?: string;
+  @IsOptional()
+  @IsString()
+  studentId?: string;
+  @IsOptional()
+  @IsString()
+  idCard?: string;
+  @IsOptional()
+  @IsString()
+  phone?: string;
+  @IsOptional()
+  @IsString()
+  githubUrl?: string;
+  @IsOptional()
+  @IsString()
+  identityZh?: string;
+  @IsOptional()
+  @IsString()
+  identityEn?: string;
+  @IsOptional()
+  @IsString()
+  identityRu?: string;
+}
+
 @Controller('profile')
 export class ProfileController {
   constructor(private profile: ProfileService) {}
@@ -133,6 +171,24 @@ export class ProfileController {
   @Roles(UserRole.LEAGUE_ADMIN)
   @Get('admin/user/:userId')
   getUserProfile(@Param('userId') userId: string) {
-    return this.profile.getOrCreate(userId);
+    return this.profile.getAdminUserProfile(userId);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Get('admin/students')
+  searchStudents(@Query() query: SearchStudentsQuery) {
+    const mode = query.mode ?? 'name';
+    return this.profile.searchStudents(query.keyword ?? '', mode);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Patch('admin/user/:userId')
+  adminUpdateUserProfile(
+    @Param('userId') userId: string,
+    @Body() body: AdminUpdateUserProfileDto,
+  ) {
+    return this.profile.adminUpdateUserProfile(userId, body);
   }
 }

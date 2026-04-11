@@ -6,6 +6,12 @@ import { PrismaService } from '../prisma/prisma.service';
 export class ProfileService {
   constructor(private prisma: PrismaService) {}
 
+  private maskIdCard(value?: string | null) {
+    if (!value) return null;
+    if (value.length <= 8) return `${value.slice(0, 2)}****${value.slice(-2)}`;
+    return `${value.slice(0, 4)}********${value.slice(-4)}`;
+  }
+
   async getOrCreate(userId: string) {
     let p = await this.prisma.profile.findUnique({
       where: { userId },
@@ -101,5 +107,107 @@ export class ProfileService {
         rejectReason: dto.approve ? null : dto.reason ?? 'Rejected',
       },
     });
+  }
+
+  async searchStudents(keyword: string, mode: 'name' | 'studentId' | 'idCard') {
+    const value = keyword.trim();
+    const where =
+      mode === 'name'
+        ? { name: { contains: value, mode: 'insensitive' as const } }
+        : mode === 'studentId'
+          ? { studentId: { contains: value } }
+          : { idCard: { contains: value } };
+
+    const users = await this.prisma.user.findMany({
+      where: {
+        role: { not: UserRole.LEAGUE_ADMIN },
+        ...(value ? where : {}),
+      },
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        studentId: true,
+        idCard: true,
+        phone: true,
+        profile: {
+          select: {
+            reviewStatus: true,
+            updatedAt: true,
+          },
+        },
+      },
+    });
+
+    return users.map((u) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      studentId: u.studentId,
+      idCardMasked: this.maskIdCard(u.idCard),
+      phone: u.phone,
+      reviewStatus: u.profile?.reviewStatus ?? ProfileReviewStatus.PENDING,
+      updatedAt: u.profile?.updatedAt ?? null,
+    }));
+  }
+
+  async getAdminUserProfile(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        studentId: true,
+        idCard: true,
+        phone: true,
+      },
+    });
+    if (!user) throw new NotFoundException('User not found');
+    const profile = await this.getOrCreate(userId);
+    return { user, profile };
+  }
+
+  async adminUpdateUserProfile(
+    userId: string,
+    dto: {
+      name?: string;
+      studentId?: string;
+      idCard?: string;
+      phone?: string;
+      githubUrl?: string;
+      identityZh?: string;
+      identityEn?: string;
+      identityRu?: string;
+    },
+  ) {
+    const existing = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!existing) throw new NotFoundException('User not found');
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: dto.name,
+        studentId: dto.studentId,
+        idCard: dto.idCard,
+        phone: dto.phone,
+      },
+    });
+
+    await this.getOrCreate(userId);
+    await this.prisma.profile.update({
+      where: { userId },
+      data: {
+        githubUrl: dto.githubUrl,
+        identityZh: dto.identityZh,
+        identityEn: dto.identityEn,
+        identityRu: dto.identityRu,
+        reviewStatus: ProfileReviewStatus.APPROVED,
+        rejectReason: null,
+      },
+    });
+
+    return this.getAdminUserProfile(userId);
   }
 }

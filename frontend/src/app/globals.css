@@ -459,3 +459,45 @@
       background: #dbeafe;
     }
   }
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 48px 16px 24px;
+  z-index: 1200;
+}
+
+.modal-panel {
+  width: min(100%, 960px);
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  box-shadow: var(--shadow);
+  max-height: calc(100vh - 72px);
+  display: grid;
+  grid-template-rows: auto 1fr;
+}
+
+.modal-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.modal-close {
+  background: #fff;
+  color: var(--text);
+  border: 1px solid var(--border);
+}
+
+.modal-body {
+  padding: 16px;
+  overflow: auto;
+}

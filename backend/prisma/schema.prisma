@@ -48,12 +48,14 @@ model User {
   passwordHash String
   name         String
   studentId    String?  @unique
+  idCard       String?  @unique
   phone        String?
   role         UserRole @default(STUDENT)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
 
   memberships       OrganizationMember[]
+  ledOrganizations  Organization[]       @relation("OrganizationLeader")
   createdTasks      Task[]               @relation("TaskCreator")
   assignedTasks     Task[]               @relation("TaskAssignee")
   plans             PersonalPlan[]
@@ -63,18 +65,23 @@ model User {
 }
 
 model Organization {
-  id        String   @id @default(uuid())
-  nameZh    String
-  nameEn    String
-  nameRu    String
-  typeZh    String
-  typeEn    String
-  typeRu    String
-  createdAt DateTime @default(now())
+  id            String   @id @default(uuid())
+  nameZh        String
+  nameEn        String
+  nameRu        String
+  descriptionZh String   @default("")
+  descriptionEn String   @default("")
+  descriptionRu String   @default("")
+  typeZh        String
+  typeEn        String
+  typeRu        String
+  leaderUserId  String?
+  createdAt     DateTime @default(now())
 
   members      OrganizationMember[]
   tasks        Task[]               @relation("TaskPrimaryOrg")
   taskLinks    TaskOrganization[]
+  leader       User?                @relation("OrganizationLeader", fields: [leaderUserId], references: [id], onDelete: SetNull)
 }
 
 model OrganizationMember {

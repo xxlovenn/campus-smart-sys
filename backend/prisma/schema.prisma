@@ -25,6 +25,17 @@ enum TaskStatus {
   BLOCKED
 }
 
+enum TaskApprovalStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+}
+
+enum TaskSource {
+  ORG_REQUEST
+  LEAGUE_PUBLISHED
+}
+
 enum PlanSource {
   PERSONAL
   ORG_TASK
@@ -58,6 +69,7 @@ model User {
   ledOrganizations  Organization[]       @relation("OrganizationLeader")
   createdTasks      Task[]               @relation("TaskCreator")
   assignedTasks     Task[]               @relation("TaskAssignee")
+  reviewedTasks     Task[]               @relation("TaskReviewer")
   plans             PersonalPlan[]
   scheduleEntries   ScheduleEntry[]
   profile           Profile?
@@ -104,6 +116,7 @@ model Task {
   startAt     DateTime?
   endAt       DateTime?
   id          String     @id @default(uuid())
+  createdAt   DateTime   @default(now())
   titleZh     String
   titleEn     String
   titleRu     String
@@ -111,6 +124,11 @@ model Task {
   descEn      String     @default("")
   descRu      String     @default("")
   status      TaskStatus @default(TODO)
+  approvalStatus TaskApprovalStatus @default(APPROVED)
+  source      TaskSource @default(LEAGUE_PUBLISHED)
+  reviewNote  String     @default("")
+  approvedAt  DateTime?
+  reviewedById String?
   dueAt       DateTime?
   creatorId   String
   assigneeId  String?
@@ -118,6 +136,7 @@ model Task {
 
   creator      User               @relation("TaskCreator", fields: [creatorId], references: [id])
   assignee     User?              @relation("TaskAssignee", fields: [assigneeId], references: [id])
+  reviewedBy   User?              @relation("TaskReviewer", fields: [reviewedById], references: [id])
   primaryOrg   Organization?      @relation("TaskPrimaryOrg", fields: [primaryOrgId], references: [id])
   relatedOrgs   TaskOrganization[]
   notifications Notification[]

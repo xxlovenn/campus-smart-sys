@@ -30,9 +30,9 @@
     "orgAdmin": {
       "dashboard": "工作台",
       "tasks": "社团活动",
-      "orgs": "组织管理",
+      "orgs": "本组织管理",
       "timeline": "活动日程",
-      "profile": "成员信息",
+      "profile": "个人档案",
       "notifications": "通知"
     },
     "leagueAdmin": {
@@ -72,7 +72,7 @@
     "greeting": "欢迎，{name}",
     "loginHint": "请先登录后使用工作台：",
     "subtitleStudent": "查看课表与日程，处理个人任务与档案。",
-    "subtitleOrgAdmin": "统筹社团活动、任务协同与成员信息。",
+    "subtitleOrgAdmin": "管理本组织活动、任务协同与组织信息。",
     "subtitleLeagueAdmin": "审核档案、管理组织与全局任务看板。",
     "quickEntry": "快速入口",
     "quickEntryHint": "按角色为你排序了最常用的功能。",

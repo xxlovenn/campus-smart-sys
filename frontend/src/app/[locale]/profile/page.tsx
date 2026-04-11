@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth-storage';
+import { confirmAction } from '@/lib/confirm';
 import { Modal } from '@/components/Modal';
 import { triField } from '@/lib/tri';
 
@@ -131,6 +132,7 @@ export default function ProfilePage() {
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
+    if (!confirmAction('确认保存档案修改吗？')) return;
 
     try {
       await apiFetch('/profile/me', {
@@ -152,6 +154,7 @@ export default function ProfilePage() {
   async function addAward(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
+    if (!confirmAction('确认新增该奖项吗？')) return;
 
     try {
       await apiFetch('/profile/awards', {
@@ -174,6 +177,7 @@ export default function ProfilePage() {
   async function addTag(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
+    if (!confirmAction('确认新增该能力标签吗？')) return;
 
     try {
       await apiFetch('/profile/tags', {
@@ -218,6 +222,7 @@ export default function ProfilePage() {
 
   async function saveStudentDetail() {
     if (!token || !studentDetail) return;
+    if (!confirmAction('确认保存该学生档案修改吗？')) return;
 
     try {
       await apiFetch(`/profile/admin/user/${studentDetail.user.id}`, {
@@ -250,14 +255,14 @@ export default function ProfilePage() {
     <div className="page-container">
       <div className="page-card">
         <h1 className="page-title">
-          {isStudent ? '个人档案' : isOrgAdmin ? '成员信息' : '学生档案管理'}
+          {isStudent ? '个人档案' : isOrgAdmin ? '组织管理员档案' : '学生档案管理'}
         </h1>
 
         <p className="page-subtitle">
           {isStudent
             ? '查看并维护个人档案、奖项与能力标签'
             : isOrgAdmin
-            ? '查看组织成员信息与个人档案示例'
+            ? '维护个人档案并参与本组织任务协同'
             : '拉取学生档案列表并支持检索与修改'}
         </p>
 

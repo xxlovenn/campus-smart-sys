@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth-storage';
+import { confirmAction } from '@/lib/confirm';
 import { Modal } from '@/components/Modal';
 
 type Me = { role: string };
@@ -83,6 +84,7 @@ export default function AdminPage() {
 
   async function review(userId: string, approve: boolean) {
     if (!token) return;
+    if (!confirmAction(approve ? '确认通过该档案审核吗？' : '确认驳回该档案审核吗？')) return;
     await apiFetch(`/profile/admin/${userId}/review`, {
       method: 'PATCH',
       token,
@@ -105,6 +107,7 @@ export default function AdminPage() {
 
   async function addMember() {
     if (!token || !orgTarget || !addMemberUserId) return;
+    if (!confirmAction('确认添加该成员到组织吗？')) return;
     try {
       const detail = await apiFetch<OrgDetail>(`/organizations/${orgTarget.id}/members`, {
         method: 'POST',
@@ -127,6 +130,7 @@ export default function AdminPage() {
 
   async function removeMember(userId: string) {
     if (!token || !orgTarget) return;
+    if (!confirmAction('确认从组织中移除该成员吗？')) return;
     try {
       const detail = await apiFetch<OrgDetail>(`/organizations/${orgTarget.id}/members/${userId}`, {
         method: 'DELETE',
@@ -142,6 +146,7 @@ export default function AdminPage() {
 
   async function removeOrg() {
     if (!token || !deleteConfirmOrg) return;
+    if (!confirmAction(`确认删除组织「${deleteConfirmOrg.nameZh}」吗？`)) return;
     try {
       await apiFetch(`/organizations/${deleteConfirmOrg.id}`, {
         method: 'DELETE',

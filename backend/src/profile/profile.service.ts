@@ -1,10 +1,14 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { ProfileReviewStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuthorizationService } from '../authorization/authorization.service';
 
 @Injectable()
 export class ProfileService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private authorization: AuthorizationService,
+  ) {}
 
   private maskIdCard(value?: string | null) {
     if (!value) return null;
@@ -109,7 +113,16 @@ export class ProfileService {
     });
   }
 
-  async searchStudents(keyword: string, mode: 'name' | 'studentId' | 'idCard') {
+  async searchStudents(
+    keyword: string,
+    mode: 'name' | 'studentId' | 'idCard',
+    operatorUserId: string,
+    operatorRole: UserRole,
+  ) {
+    if (operatorRole === UserRole.ORG_ADMIN && mode === 'idCard') {
+      throw new ForbiddenException('Org admin can only search by name or studentId');
+    }
+
     const value = keyword.trim();
     const where =
       mode === 'name'
@@ -118,9 +131,16 @@ export class ProfileService {
           ? { studentId: { contains: value } }
           : { idCard: { contains: value } };
 
+    const managedOrgIds = operatorRole === UserRole.ORG_ADMIN
+      ? await this.authorization.managedOrgIds(operatorUserId)
+      : [];
+
     const users = await this.prisma.user.findMany({
       where: {
         role: { not: UserRole.LEAGUE_ADMIN },
+        ...(operatorRole === UserRole.ORG_ADMIN
+          ? { memberships: { some: { organizationId: { in: managedOrgIds } } } }
+          : {}),
         ...(value ? where : {}),
       },
       orderBy: { createdAt: 'desc' },

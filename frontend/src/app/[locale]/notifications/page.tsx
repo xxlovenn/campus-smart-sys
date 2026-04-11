@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth-storage';
+import { confirmAction } from '@/lib/confirm';
 import { triField } from '@/lib/tri';
 
 type N = { id: string; read: boolean; createdAt: string } & Record<string, unknown>;
@@ -34,12 +35,14 @@ export default function NotificationsPage() {
 
   async function markRead(id: string) {
     if (!token) return;
+    if (!confirmAction('确认将该通知标记为已读吗？')) return;
     await apiFetch(`/notifications/${id}/read`, { method: 'PATCH', token });
     load();
   }
 
   async function markAll() {
     if (!token) return;
+    if (!confirmAction('确认将全部通知标记为已读吗？')) return;
     await apiFetch('/notifications/read-all', { method: 'PATCH', token });
     load();
   }

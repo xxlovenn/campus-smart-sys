@@ -5,6 +5,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth-storage';
+import { confirmAction } from '@/lib/confirm';
 import { triField } from '@/lib/tri';
 
 type Me = {
@@ -155,6 +156,7 @@ export default function TimelinePage() {
       setErr('结束时间不能早于开始时间');
       return;
     }
+    if (!confirmAction('确认创建该日程/计划吗？')) return;
 
     try {
       await apiFetch('/plans', {
@@ -189,6 +191,7 @@ export default function TimelinePage() {
 
   async function syncMock() {
     if (!token) return;
+    if (!confirmAction('确认导入课程安排吗？')) return;
     try {
       await apiFetch('/schedule/sync-mock', { method: 'POST', token });
       load();

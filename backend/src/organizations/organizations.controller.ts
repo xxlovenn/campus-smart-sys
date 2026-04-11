@@ -131,40 +131,46 @@ export class OrganizationsController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.LEAGUE_ADMIN)
+  @Roles(UserRole.LEAGUE_ADMIN, UserRole.ORG_ADMIN)
   @Get(':id/detail')
-  detail(@Param('id', new ParseUUIDPipe()) id: string) {
-    return this.orgs.detail(id);
+  detail(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Req() req: { user: { id: string; role: UserRole } },
+  ) {
+    return this.orgs.detail(id, req.user.id, req.user.role);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.LEAGUE_ADMIN)
+  @Roles(UserRole.LEAGUE_ADMIN, UserRole.ORG_ADMIN)
   @Patch(':id')
   update(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: UpdateOrgDto,
+    @Req() req: { user: { id: string; role: UserRole } },
   ) {
-    return this.orgs.update(id, body);
+    return this.orgs.update(id, body, req.user.id, req.user.role);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.LEAGUE_ADMIN)
+  @Roles(UserRole.LEAGUE_ADMIN, UserRole.ORG_ADMIN)
   @Post(':id/members')
   addMember(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Body() body: AddOrgMemberDto,
+    @Req() req: { user: { id: string; role: UserRole } },
   ) {
-    return this.orgs.addMember(id, body);
+    return this.orgs.addMember(id, body, req.user.id, req.user.role);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.LEAGUE_ADMIN)
+  @Roles(UserRole.LEAGUE_ADMIN, UserRole.ORG_ADMIN)
   @Delete(':id/members/:userId')
   removeMember(
     @Param('id', new ParseUUIDPipe()) id: string,
     @Param('userId', new ParseUUIDPipe()) userId: string,
+    @Req() req: { user: { id: string; role: UserRole } },
   ) {
-    return this.orgs.removeMember(id, userId);
+    return this.orgs.removeMember(id, userId, req.user.id, req.user.role);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

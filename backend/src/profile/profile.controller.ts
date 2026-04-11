@@ -175,11 +175,14 @@ export class ProfileController {
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
-  @Roles(UserRole.LEAGUE_ADMIN)
+  @Roles(UserRole.LEAGUE_ADMIN, UserRole.ORG_ADMIN)
   @Get('admin/students')
-  searchStudents(@Query() query: SearchStudentsQuery) {
+  searchStudents(
+    @Req() req: { user: { id: string; role: UserRole } },
+    @Query() query: SearchStudentsQuery,
+  ) {
     const mode = query.mode ?? 'name';
-    return this.profile.searchStudents(query.keyword ?? '', mode);
+    return this.profile.searchStudents(query.keyword ?? '', mode, req.user.id, req.user.role);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

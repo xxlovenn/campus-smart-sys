@@ -19,7 +19,7 @@ type SidebarRole = 'student' | 'orgAdmin' | 'leagueAdmin';
 
 const ROLE_ORDER: Record<string, QuickKey[]> = {
   STUDENT: ['timeline', 'tasks', 'organizations', 'profile', 'notifications'],
-  ORG_ADMIN: ['tasks', 'organizations', 'timeline', 'profile', 'notifications'],
+  ORG_ADMIN: ['tasks', 'organizations', 'notifications'],
   LEAGUE_ADMIN: ['admin', 'organizations', 'tasks', 'timeline', 'profile', 'notifications'],
 };
 

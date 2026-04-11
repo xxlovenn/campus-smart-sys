@@ -34,6 +34,19 @@ export function canDeleteTask(
   return isCreator;
 }
 
+export function canAttachRelatedOrgs(
+  effectiveRole: UserRole,
+  relatedOrgIds: string[] | undefined,
+  managedOrgIds: string[],
+): boolean {
+  if (!relatedOrgIds?.length) return true;
+  if (effectiveRole === UserRole.LEAGUE_ADMIN) return true;
+  if (effectiveRole === UserRole.ORG_ADMIN) {
+    return relatedOrgIds.every((orgId) => managedOrgIds.includes(orgId));
+  }
+  return false;
+}
+
 export function canUpdateTaskStatus(
   effectiveRole: UserRole,
   isCreatorOrAssignee: boolean,

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { OrganizationMemberRole, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthorizationService } from '../authorization/authorization.service';
@@ -59,7 +59,16 @@ export class OrganizationsService {
     });
   }
 
-  async detail(orgId: string) {
+  private async assertManageScope(userId: string, role: UserRole, orgId: string) {
+    if (role === UserRole.LEAGUE_ADMIN) return;
+    const managedOrgIds = await this.authorization.managedOrgIds(userId);
+    if (!managedOrgIds.includes(orgId)) {
+      throw new ForbiddenException('No permission to manage this organization');
+    }
+  }
+
+  async detail(orgId: string, userId: string, role: UserRole) {
+    await this.assertManageScope(userId, role, orgId);
     const org = await this.prisma.organization.findUnique({
       where: { id: orgId },
       include: {
@@ -99,7 +108,10 @@ export class OrganizationsService {
       typeRu: string;
       leaderUserId?: string;
     },
+    userId: string,
+    role: UserRole,
   ) {
+    await this.assertManageScope(userId, role, orgId);
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
     if (!org) throw new NotFoundException('Organization not found');
 
@@ -119,7 +131,7 @@ export class OrganizationsService {
       },
     });
 
-    return this.detail(orgId);
+    return this.detail(orgId, userId, role);
   }
 
   async addMember(
@@ -131,7 +143,10 @@ export class OrganizationsService {
       roleEn?: string;
       roleRu?: string;
     },
+    userId: string,
+    role: UserRole,
   ) {
+    await this.assertManageScope(userId, role, orgId);
     const org = await this.prisma.organization.findUnique({ where: { id: orgId } });
     if (!org) throw new NotFoundException('Organization not found');
     const user = await this.prisma.user.findUnique({ where: { id: data.userId } });
@@ -155,14 +170,20 @@ export class OrganizationsService {
       },
     });
 
-    return this.detail(orgId);
+    return this.detail(orgId, userId, role);
   }
 
-  async removeMember(orgId: string, userId: string) {
+  async removeMember(
+    orgId: string,
+    memberUserId: string,
+    operatorUserId: string,
+    role: UserRole,
+  ) {
+    await this.assertManageScope(operatorUserId, role, orgId);
     await this.prisma.organizationMember.deleteMany({
-      where: { organizationId: orgId, userId },
+      where: { organizationId: orgId, userId: memberUserId },
     });
-    return this.detail(orgId);
+    return this.detail(orgId, operatorUserId, role);
   }
 
   async remove(orgId: string, operatorName: string) {

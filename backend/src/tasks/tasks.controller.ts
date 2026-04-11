@@ -11,6 +11,7 @@ import {
 } from '@nestjs/common';
 import {
   IsArray,
+  IsBoolean,
   IsEnum,
   IsOptional,
   IsString,
@@ -79,6 +80,14 @@ class UpdateStatusDto {
   status!: TaskStatus;
 }
 
+class ReviewTaskRequestDto {
+  @IsBoolean()
+  approve!: boolean;
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
 @Controller('tasks')
 export class TasksController {
   constructor(private tasks: TasksService) {}
@@ -94,6 +103,24 @@ export class TasksController {
   @Get('admin/overview')
   overview() {
     return this.tasks.adminOverview();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Get('admin/requests')
+  requests() {
+    return this.tasks.pendingRequests();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Patch('admin/requests/:id/review')
+  reviewRequest(
+    @Req() req: { user: { id: string } },
+    @Param('id') id: string,
+    @Body() body: ReviewTaskRequestDto,
+  ) {
+    return this.tasks.reviewRequest(id, req.user.id, body.approve, body.reason);
   }
 
   @UseGuards(JwtAuthGuard)

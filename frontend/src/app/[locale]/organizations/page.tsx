@@ -5,6 +5,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
 import { getToken } from '@/lib/auth-storage';
+import { confirmAction } from '@/lib/confirm';
 import { Modal } from '@/components/Modal';
 import { triField } from '@/lib/tri';
 
@@ -23,7 +24,7 @@ type Org = {
   _count?: { members: number };
 };
 type Me = { role: string; managedOrgIds?: string[] };
-type UserOption = { id: string; name?: string; email?: string; studentId?: string | null };
+type SearchMode = 'name' | 'studentId' | 'idCard';
 type LeaderCandidate = {
   id: string;
   name: string;
@@ -57,14 +58,13 @@ export default function OrgsPage() {
   const token = getToken();
   const [me, setMe] = useState<Me | null>(null);
   const [orgs, setOrgs] = useState<Org[]>([]);
-  const [users, setUsers] = useState<UserOption[]>([]);
   const [form, setForm] = useState({
     name: '',
     description: '',
     type: '',
     leaderUserId: '',
   });
-  const [leaderSearchMode, setLeaderSearchMode] = useState<'name' | 'studentId' | 'idCard'>('name');
+  const [leaderSearchMode, setLeaderSearchMode] = useState<SearchMode>('name');
   const [leaderKeyword, setLeaderKeyword] = useState('');
   const [leaderCandidates, setLeaderCandidates] = useState<LeaderCandidate[]>([]);
   const [detail, setDetail] = useState<OrgDetail | null>(null);
@@ -74,14 +74,22 @@ export default function OrgsPage() {
     description: '',
     leaderUserId: '',
   });
-  const [editLeaderMode, setEditLeaderMode] = useState<'name' | 'studentId' | 'idCard'>('name');
+  const [editLeaderMode, setEditLeaderMode] = useState<SearchMode>('name');
   const [editLeaderKeyword, setEditLeaderKeyword] = useState('');
   const [editLeaderCandidates, setEditLeaderCandidates] = useState<LeaderCandidate[]>([]);
   const [deleteTarget, setDeleteTarget] = useState<Org | null>(null);
   const [operatorName, setOperatorName] = useState('');
   const [addMemberUserId, setAddMemberUserId] = useState('');
   const [addMemberRoleZh, setAddMemberRoleZh] = useState('成员');
+  const [memberSearchMode, setMemberSearchMode] = useState<SearchMode>('name');
+  const [memberKeyword, setMemberKeyword] = useState('');
+  const [memberCandidates, setMemberCandidates] = useState<LeaderCandidate[]>([]);
   const [err, setErr] = useState<string | null>(null);
+
+  const isLeagueAdmin = me?.role === 'LEAGUE_ADMIN';
+  const allowedModes: SearchMode[] = isLeagueAdmin ? ['name', 'studentId', 'idCard'] : ['name', 'studentId'];
+  const canManageOrg = (orgId: string) =>
+    isLeagueAdmin || (me?.managedOrgIds ?? []).includes(orgId);
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -94,13 +102,7 @@ export default function OrgsPage() {
         { token },
       );
       setOrgs(Array.isArray(list) ? list : []);
-      if (m.role === 'LEAGUE_ADMIN') {
-        const userList = await apiFetch<UserOption[]>('/users', { token });
-        setUsers(Array.isArray(userList) ? userList : []);
-      } else {
-        setUsers([]);
-        setLeaderCandidates([]);
-      }
+      if (m.role !== 'LEAGUE_ADMIN') setLeaderCandidates([]);
     } catch (e) {
       setErr(e instanceof Error ? e.message : tc('error'));
     }
@@ -117,6 +119,7 @@ export default function OrgsPage() {
       setErr('请填写组织名称和组织类型');
       return;
     }
+    if (!confirmAction('确认新建该组织吗？')) return;
     try {
       await apiFetch('/organizations', {
         method: 'POST',
@@ -176,6 +179,9 @@ export default function OrgsPage() {
       });
       setEditLeaderKeyword('');
       setEditLeaderCandidates([]);
+      setMemberKeyword('');
+      setMemberCandidates([]);
+      setAddMemberUserId('');
     } catch (e) {
       setErr(e instanceof Error ? e.message : tc('error'));
     }
@@ -201,6 +207,7 @@ export default function OrgsPage() {
       setErr('请填写组织名称和组织类型');
       return;
     }
+    if (!confirmAction('确认保存组织信息修改吗？')) return;
     try {
       const d = await apiFetch<OrgDetail>(`/organizations/${detail.id}`, {
         method: 'PATCH',
@@ -228,6 +235,7 @@ export default function OrgsPage() {
 
   async function addMember() {
     if (!token || !detail || !addMemberUserId) return;
+    if (!confirmAction('确认添加该成员到组织吗？')) return;
     try {
       const d = await apiFetch<OrgDetail>(`/organizations/${detail.id}/members`, {
         method: 'POST',
@@ -247,8 +255,23 @@ export default function OrgsPage() {
     }
   }
 
+  async function searchMembers() {
+    if (!token) return;
+    try {
+      const list = await apiFetch<LeaderCandidate[]>(
+        `/profile/admin/students?keyword=${encodeURIComponent(memberKeyword)}&mode=${memberSearchMode}`,
+        { token },
+      );
+      setMemberCandidates(Array.isArray(list) ? list : []);
+      setErr(null);
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : tc('error'));
+    }
+  }
+
   async function removeMember(userId: string) {
     if (!token || !detail) return;
+    if (!confirmAction('确认移除该成员吗？')) return;
     try {
       const d = await apiFetch<OrgDetail>(`/organizations/${detail.id}/members/${userId}`, {
         method: 'DELETE',
@@ -263,6 +286,7 @@ export default function OrgsPage() {
 
   async function removeOrg() {
     if (!token || !deleteTarget || !operatorName.trim()) return;
+    if (!confirmAction(`确认删除组织「${deleteTarget.nameZh}」吗？此操作不可恢复。`)) return;
     try {
       await apiFetch(`/organizations/${deleteTarget.id}`, {
         method: 'DELETE',
@@ -292,10 +316,12 @@ export default function OrgsPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
             <h1 className="page-title" style={{ marginBottom: 4 }}>
-              {t('list')}
+              本组织管理
             </h1>
             <p className="page-subtitle" style={{ marginBottom: 0 }}>
-              团委端可在此新建组织、设置负责人并维护成员。
+              {isLeagueAdmin
+                ? '团委端可在此新建组织、设置负责人并维护成员。'
+                : '社团端可在此管理自己负责的组织信息与成员。'}
             </p>
           </div>
           <button type="button" onClick={load}>
@@ -304,7 +330,7 @@ export default function OrgsPage() {
         </div>
         {err && <div style={{ color: 'crimson' }}>{err}</div>}
 
-      {me?.role === 'LEAGUE_ADMIN' && (
+      {isLeagueAdmin && (
         <form onSubmit={onCreate} className="card-soft" style={{ display: 'grid', gap: 10, maxWidth: 720 }}>
           <h3 style={{ marginBottom: 2 }}>{t('new')}</h3>
           <p className="topbar-muted" style={{ marginBottom: 2 }}>
@@ -334,14 +360,12 @@ export default function OrgsPage() {
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <select
                 value={leaderSearchMode}
-                onChange={(e) =>
-                  setLeaderSearchMode(e.target.value as 'name' | 'studentId' | 'idCard')
-                }
+                onChange={(e) => setLeaderSearchMode(e.target.value as SearchMode)}
                 style={{ maxWidth: 160 }}
               >
                 <option value="name">姓名</option>
                 <option value="studentId">学号</option>
-                <option value="idCard">身份证</option>
+                {allowedModes.includes('idCard') ? <option value="idCard">身份证</option> : null}
               </select>
               <input
                 placeholder="输入关键词检索负责人"
@@ -374,7 +398,8 @@ export default function OrgsPage() {
                     style={{ width: 16 }}
                   />
                   <span>
-                    {c.name} · {c.studentId ?? '—'} · {c.idCardMasked ?? '—'}
+                    {c.name} · {c.studentId ?? '—'}
+                    {isLeagueAdmin ? ` · ${c.idCardMasked ?? '—'}` : ''}
                   </span>
                 </label>
               ))}
@@ -396,7 +421,7 @@ export default function OrgsPage() {
       )}
 
         <section className="card-soft" style={{ display: 'grid', gap: 10 }}>
-          <h3 style={{ margin: 0 }}>组织列表</h3>
+          <h3 style={{ margin: 0 }}>组织概览</h3>
           <ul className="list-clean">
             {orgs.map((o) => (
               <li key={o.id} className="list-item">
@@ -416,14 +441,16 @@ export default function OrgsPage() {
                       {typeof o._count?.members === 'number' ? ` · 成员 ${o._count.members}` : ''}
                     </span>
                   </div>
-                  {me?.role === 'LEAGUE_ADMIN' ? (
+                  {canManageOrg(o.id) ? (
                     <div style={{ display: 'flex', gap: 8 }}>
                       <button type="button" onClick={() => openDetail(o.id)}>
-                        详情
+                        管理
                       </button>
-                      <button type="button" className="logout-btn" onClick={() => setDeleteTarget(o)}>
-                        删除
-                      </button>
+                      {isLeagueAdmin ? (
+                        <button type="button" className="logout-btn" onClick={() => setDeleteTarget(o)}>
+                          删除
+                        </button>
+                      ) : null}
                     </div>
                   ) : null}
                 </div>
@@ -432,140 +459,179 @@ export default function OrgsPage() {
           </ul>
         </section>
       </div>
-
-      <Modal
-        open={!!detail}
-        title={detail ? `组织详情：${detail.nameZh}` : '组织详情'}
-        onClose={() => {
-          setDetail(null);
-          setEditLeaderCandidates([]);
-        }}
-        width={860}
-      >
-        {detail ? (
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div className="card-soft" style={{ display: 'grid', gap: 10 }}>
-              <h4 style={{ margin: 0 }}>编辑组织信息</h4>
-              <p className="topbar-muted" style={{ margin: 0 }}>
-                单端输入后将自动同步至三语言字段。
-              </p>
-              <input
-                placeholder="组织名称（自动同步 EN/RU）"
-                value={editForm.name}
-                onChange={(e) => setEditForm((s) => ({ ...s, name: e.target.value }))}
-              />
-              <input
-                placeholder="组织类型（自动同步 EN/RU）"
-                value={editForm.type}
-                onChange={(e) => setEditForm((s) => ({ ...s, type: e.target.value }))}
-              />
-              <textarea
-                placeholder="组织简介（自动同步 EN/RU）"
-                rows={3}
-                value={editForm.description}
-                onChange={(e) => setEditForm((s) => ({ ...s, description: e.target.value }))}
-              />
-              <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-                <h4 style={{ margin: 0 }}>负责人选择（档案式检索）</h4>
-                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                  <select
-                    value={editLeaderMode}
-                    onChange={(e) =>
-                      setEditLeaderMode(e.target.value as 'name' | 'studentId' | 'idCard')
-                    }
-                    style={{ maxWidth: 160 }}
-                  >
-                    <option value="name">姓名</option>
-                    <option value="studentId">学号</option>
-                    <option value="idCard">身份证</option>
-                  </select>
-                  <input
-                    placeholder="输入关键词检索负责人"
-                    value={editLeaderKeyword}
-                    onChange={(e) => setEditLeaderKeyword(e.target.value)}
-                    style={{ flex: 1, minWidth: 260 }}
-                  />
-                  <button type="button" onClick={searchEditLeader}>
-                    查询
-                  </button>
-                </div>
-                <div style={{ display: 'grid', gap: 6, maxHeight: 180, overflow: 'auto' }}>
-                  {editLeaderCandidates.map((c) => (
-                    <label
-                      key={c.id}
-                      style={{
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: 8,
-                        border: '1px solid var(--border)',
-                        borderRadius: 10,
-                        padding: '8px 10px',
-                      }}
-                    >
-                      <input
-                        type="radio"
-                        name="editLeader"
-                        checked={editForm.leaderUserId === c.id}
-                        onChange={() => setEditForm((s) => ({ ...s, leaderUserId: c.id }))}
-                        style={{ width: 16 }}
-                      />
-                      <span>
-                        {c.name} · {c.studentId ?? '—'} · {c.idCardMasked ?? '—'}
-                      </span>
-                    </label>
-                  ))}
-                </div>
-                {editForm.leaderUserId ? (
-                  <button
-                    type="button"
-                    className="modal-close"
-                    onClick={() => setEditForm((s) => ({ ...s, leaderUserId: '' }))}
-                    style={{ width: 'fit-content' }}
-                  >
-                    清除负责人
-                  </button>
-                ) : null}
-              </div>
-              <button type="button" onClick={saveOrgInfo}>
-                保存组织信息
-              </button>
-            </div>
-            <div className="topbar-muted">简介：{detail.descriptionZh || '—'}</div>
-            <h4 style={{ margin: 0 }}>成员管理</h4>
-            <ul className="list-clean">
-              {detail.members.map((m) => (
-                <li key={m.userId} className="list-item" style={{ display: 'flex', justifyContent: 'space-between' }}>
-                  <span>
-                    {m.user.name} · {m.user.studentId ?? '—'} · {m.roleZh}
-                  </span>
-                  <button type="button" className="logout-btn" onClick={() => removeMember(m.userId)}>
-                    移除
-                  </button>
-                </li>
-              ))}
-            </ul>
+      {detail ? (
+        <div className="page-card" style={{ display: 'grid', gap: 12, marginTop: 16 }}>
+          <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+            <h3 style={{ margin: 0 }}>组织管理：{detail.nameZh}</h3>
+            <button
+              type="button"
+              className="modal-close"
+              onClick={() => {
+                setDetail(null);
+                setEditLeaderCandidates([]);
+              }}
+            >
+              收起
+            </button>
+          </div>
+          <div className="card-soft" style={{ display: 'grid', gap: 10 }}>
+            <h4 style={{ margin: 0 }}>编辑组织信息</h4>
+            <p className="topbar-muted" style={{ margin: 0 }}>
+              单端输入后将自动同步至三语言字段。
+            </p>
+            <input
+              placeholder="组织名称（自动同步 EN/RU）"
+              value={editForm.name}
+              onChange={(e) => setEditForm((s) => ({ ...s, name: e.target.value }))}
+            />
+            <input
+              placeholder="组织类型（自动同步 EN/RU）"
+              value={editForm.type}
+              onChange={(e) => setEditForm((s) => ({ ...s, type: e.target.value }))}
+            />
+            <textarea
+              placeholder="组织简介（自动同步 EN/RU）"
+              rows={3}
+              value={editForm.description}
+              onChange={(e) => setEditForm((s) => ({ ...s, description: e.target.value }))}
+            />
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-              <h4 style={{ margin: 0 }}>添加成员</h4>
-              <select value={addMemberUserId} onChange={(e) => setAddMemberUserId(e.target.value)}>
-                <option value="">选择用户</option>
-                {users.map((u) => (
-                  <option key={u.id} value={u.id}>
-                    {u.name || u.email || u.id} · {u.studentId ?? '—'}
-                  </option>
+              <h4 style={{ margin: 0 }}>负责人选择（档案式检索）</h4>
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <select
+                  value={editLeaderMode}
+                  onChange={(e) => setEditLeaderMode(e.target.value as SearchMode)}
+                  style={{ maxWidth: 160 }}
+                >
+                  <option value="name">姓名</option>
+                  <option value="studentId">学号</option>
+                  {allowedModes.includes('idCard') ? <option value="idCard">身份证</option> : null}
+                </select>
+                <input
+                  placeholder="输入关键词检索负责人"
+                  value={editLeaderKeyword}
+                  onChange={(e) => setEditLeaderKeyword(e.target.value)}
+                  style={{ flex: 1, minWidth: 260 }}
+                />
+                <button type="button" onClick={searchEditLeader}>
+                  查询
+                </button>
+              </div>
+              <div style={{ display: 'grid', gap: 6, maxHeight: 180, overflow: 'auto' }}>
+                {editLeaderCandidates.map((c) => (
+                  <label
+                    key={c.id}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: 8,
+                      border: '1px solid var(--border)',
+                      borderRadius: 10,
+                      padding: '8px 10px',
+                    }}
+                  >
+                    <input
+                      type="radio"
+                      name="editLeader"
+                      checked={editForm.leaderUserId === c.id}
+                      onChange={() => setEditForm((s) => ({ ...s, leaderUserId: c.id }))}
+                      style={{ width: 16 }}
+                    />
+                    <span>
+                      {c.name} · {c.studentId ?? '—'}
+                      {isLeagueAdmin ? ` · ${c.idCardMasked ?? '—'}` : ''}
+                    </span>
+                  </label>
                 ))}
+              </div>
+              {editForm.leaderUserId ? (
+                <button
+                  type="button"
+                  className="modal-close"
+                  onClick={() => setEditForm((s) => ({ ...s, leaderUserId: '' }))}
+                  style={{ width: 'fit-content' }}
+                >
+                  清除负责人
+                </button>
+              ) : null}
+            </div>
+            <button type="button" onClick={saveOrgInfo}>
+              保存组织信息
+            </button>
+          </div>
+          <div className="topbar-muted">简介：{detail.descriptionZh || '—'}</div>
+          <h4 style={{ margin: 0 }}>成员管理</h4>
+          <ul className="list-clean">
+            {detail.members.map((m) => (
+              <li key={m.userId} className="list-item" style={{ display: 'flex', justifyContent: 'space-between' }}>
+                <span>
+                  {m.user.name} · {m.user.studentId ?? '—'} · {m.roleZh}
+                </span>
+                <button type="button" className="logout-btn" onClick={() => removeMember(m.userId)}>
+                  移除
+                </button>
+              </li>
+            ))}
+          </ul>
+          <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
+            <h4 style={{ margin: 0 }}>添加成员</h4>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <select
+                value={memberSearchMode}
+                onChange={(e) => setMemberSearchMode(e.target.value as SearchMode)}
+                style={{ maxWidth: 160 }}
+              >
+                <option value="name">姓名</option>
+                <option value="studentId">学号</option>
+                {allowedModes.includes('idCard') ? <option value="idCard">身份证</option> : null}
               </select>
               <input
-                value={addMemberRoleZh}
-                onChange={(e) => setAddMemberRoleZh(e.target.value)}
-                placeholder="组织内身份（成员/负责人）"
+                placeholder="输入关键词检索成员"
+                value={memberKeyword}
+                onChange={(e) => setMemberKeyword(e.target.value)}
+                style={{ flex: 1, minWidth: 260 }}
               />
-              <button type="button" onClick={addMember}>
-                添加
+              <button type="button" onClick={searchMembers}>
+                查询
               </button>
             </div>
+            <div style={{ display: 'grid', gap: 6, maxHeight: 180, overflow: 'auto' }}>
+              {memberCandidates.map((c) => (
+                <label
+                  key={c.id}
+                  style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 8,
+                    border: '1px solid var(--border)',
+                    borderRadius: 10,
+                    padding: '8px 10px',
+                  }}
+                >
+                  <input
+                    type="radio"
+                    name="member"
+                    checked={addMemberUserId === c.id}
+                    onChange={() => setAddMemberUserId(c.id)}
+                    style={{ width: 16 }}
+                  />
+                  <span>
+                    {c.name} · {c.studentId ?? '—'}
+                  </span>
+                </label>
+              ))}
+            </div>
+            <input
+              value={addMemberRoleZh}
+              onChange={(e) => setAddMemberRoleZh(e.target.value)}
+              placeholder="组织内身份（成员/负责人）"
+            />
+            <button type="button" onClick={addMember}>
+              添加
+            </button>
           </div>
-        ) : null}
-      </Modal>
+        </div>
+      ) : null}
 
       <Modal
         open={!!deleteTarget}

@@ -1,6 +1,7 @@
 import { strict as assert } from 'node:assert';
 import { UserRole } from '@prisma/client';
 import {
+  canAttachRelatedOrgs,
   canCreateTask,
   canDeleteTask,
   canUpdateTaskStatus,
@@ -19,6 +20,10 @@ function run() {
   assert.equal(canCreateTask(UserRole.ORG_ADMIN, 'org-1', ['org-1']), true);
   assert.equal(canCreateTask(UserRole.ORG_ADMIN, 'org-2', ['org-1']), false);
   assert.equal(canCreateTask(UserRole.STUDENT, 'org-1', ['org-1']), false);
+  assert.equal(canAttachRelatedOrgs(UserRole.LEAGUE_ADMIN, ['org-1', 'org-2'], []), true);
+  assert.equal(canAttachRelatedOrgs(UserRole.ORG_ADMIN, ['org-1'], ['org-1']), true);
+  assert.equal(canAttachRelatedOrgs(UserRole.ORG_ADMIN, ['org-2'], ['org-1']), false);
+  assert.equal(canAttachRelatedOrgs(UserRole.STUDENT, ['org-1'], ['org-1']), false);
 
   assert.equal(canUpdateTaskStatus(UserRole.LEAGUE_ADMIN, false, false), true);
   assert.equal(canUpdateTaskStatus(UserRole.ORG_ADMIN, false, true), true);

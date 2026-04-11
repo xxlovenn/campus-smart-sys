@@ -33,9 +33,9 @@
     "orgAdmin": {
       "dashboard": "Dashboard",
       "tasks": "Club activities",
-      "orgs": "Organization management",
+      "orgs": "My organization",
       "timeline": "Activity schedule",
-      "profile": "Member profiles",
+      "profile": "My profile",
       "notifications": "Notifications"
     },
     "leagueAdmin": {
@@ -75,7 +75,7 @@
     "greeting": "Welcome, {name}",
     "loginHint": "Sign in to use your dashboard:",
     "subtitleStudent": "Timetable, plans, tasks, and your profile in one place.",
-    "subtitleOrgAdmin": "Coordinate club activities, tasks, and member workflows.",
+    "subtitleOrgAdmin": "Manage your organization, coordinate tasks, and run activities.",
     "subtitleLeagueAdmin": "Review profiles, manage orgs, and monitor the task board.",
     "quickEntry": "Shortcuts",
     "quickEntryHint": "Entries are ordered for your role.",

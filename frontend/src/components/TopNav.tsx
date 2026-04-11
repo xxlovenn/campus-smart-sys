@@ -33,8 +33,6 @@ const NAV_ITEMS: Record<SidebarRole, NavItem[]> = {
     { href: '/dashboard', key: 'dashboard' },
     { href: '/tasks', key: 'tasks' },
     { href: '/organizations', key: 'orgs' },
-    { href: '/timeline', key: 'timeline' },
-    { href: '/profile', key: 'profile' },
     { href: '/notifications', key: 'notifications' },
   ],
   leagueAdmin: [

@@ -30,6 +30,16 @@ services:
       JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_string_min_32_chars}
       JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-7d}
       PORT: 3001
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3001/api/health').then(r=>{if(!r.ok) process.exit(1)}).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 20s
     ports:
       - "3001:3001"
 
@@ -42,10 +52,21 @@ services:
         BACKEND_INTERNAL_ORIGIN: http://backend:3001
     restart: unless-stopped
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     environment:
       NEXT_PUBLIC_API_URL: /api
       BACKEND_INTERNAL_ORIGIN: http://backend:3001
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "node -e \"fetch('http://127.0.0.1:3000/').then(r=>{if(r.status < 200 || r.status >= 400) process.exit(1)}).catch(()=>process.exit(1))\"",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 25s
     ports:
       - "3000:3000"
 

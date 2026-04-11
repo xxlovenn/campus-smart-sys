@@ -11,6 +11,7 @@ import { ProfileModule } from './profile/profile.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { RemindersModule } from './reminders/reminders.module';
 import { AuthorizationModule } from './authorization/authorization.module';
+import { HealthModule } from './health/health.module';
 
 @Module({
   imports: [
@@ -26,6 +27,7 @@ import { AuthorizationModule } from './authorization/authorization.module';
     ProfileModule,
     NotificationsModule,
     RemindersModule,
+    HealthModule,
   ],
 })
 export class AppModule {}

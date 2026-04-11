@@ -67,6 +67,17 @@ enum ProfileReviewStatus {
   REJECTED
 }
 
+enum ProfileItemAction {
+  ADD
+  DELETE
+}
+
+enum ProfileItemRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
 model User {
   id           String   @id @default(uuid())
   email        String   @unique
@@ -94,6 +105,12 @@ model User {
   scheduleEntries   ScheduleEntry[]
   profile           Profile?
   notifications     Notification[]
+  awardRequests     AwardChangeRequest[] @relation("AwardRequestOwner")
+  reviewedAwardRequests AwardChangeRequest[] @relation("AwardRequestReviewer")
+  tagRequests       TagChangeRequest[]   @relation("TagRequestOwner")
+  reviewedTagRequests TagChangeRequest[] @relation("TagRequestReviewer")
+  gradeMajorRequests GradeMajorChangeRequest[] @relation("GradeMajorRequestOwner")
+  reviewedGradeMajorRequests GradeMajorChangeRequest[] @relation("GradeMajorRequestReviewer")
 }
 
 model Organization {
@@ -255,6 +272,7 @@ model Award {
   awardedAt   DateTime @default(now())
 
   profile Profile @relation(fields: [profileUserId], references: [userId], onDelete: Cascade)
+  changeRequests AwardChangeRequest[]
 }
 
 model SkillTag {
@@ -268,6 +286,66 @@ model SkillTag {
   nameRu        String
 
   profile Profile @relation(fields: [profileUserId], references: [userId], onDelete: Cascade)
+  changeRequests TagChangeRequest[]
+}
+
+model AwardChangeRequest {
+  id         String                   @id @default(uuid())
+  userId     String
+  action     ProfileItemAction
+  awardId    String?
+  titleZh    String                   @default("")
+  titleEn    String                   @default("")
+  titleRu    String                   @default("")
+  proofUrl   String?                  @default("")
+  status     ProfileItemRequestStatus @default(PENDING)
+  reason     String?
+  reviewerId String?
+  reviewedAt DateTime?
+  createdAt  DateTime                 @default(now())
+
+  user     User   @relation("AwardRequestOwner", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer User?  @relation("AwardRequestReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  award    Award? @relation(fields: [awardId], references: [id], onDelete: SetNull)
+}
+
+model TagChangeRequest {
+  id         String                   @id @default(uuid())
+  userId     String
+  action     ProfileItemAction
+  tagId      String?
+  categoryZh String                   @default("")
+  categoryEn String                   @default("")
+  categoryRu String                   @default("")
+  nameZh     String                   @default("")
+  nameEn     String                   @default("")
+  nameRu     String                   @default("")
+  status     ProfileItemRequestStatus @default(PENDING)
+  reason     String?
+  reviewerId String?
+  reviewedAt DateTime?
+  createdAt  DateTime                 @default(now())
+
+  user     User      @relation("TagRequestOwner", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer User?     @relation("TagRequestReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
+  tag      SkillTag? @relation(fields: [tagId], references: [id], onDelete: SetNull)
+}
+
+model GradeMajorChangeRequest {
+  id         String                   @id @default(uuid())
+  userId     String
+  fromGrade  String?
+  fromMajor  String?
+  toGrade    String?
+  toMajor    String?
+  status     ProfileItemRequestStatus @default(PENDING)
+  reason     String?
+  reviewerId String?
+  reviewedAt DateTime?
+  createdAt  DateTime                 @default(now())
+
+  user     User  @relation("GradeMajorRequestOwner", fields: [userId], references: [id], onDelete: Cascade)
+  reviewer User? @relation("GradeMajorRequestReviewer", fields: [reviewerId], references: [id], onDelete: SetNull)
 }
 
 model Notification {

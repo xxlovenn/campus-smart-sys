@@ -98,6 +98,7 @@ export default function OrgsPage() {
   const [createdCredential, setCreatedCredential] = useState<CreatedCredential | null>(null);
 
   const isLeagueAdmin = me?.role === 'LEAGUE_ADMIN';
+  const isOrgAdmin = !isLeagueAdmin && (me?.managedOrgIds ?? []).length > 0;
   const allowedModes: SearchMode[] = isLeagueAdmin ? ['name', 'studentId', 'idCard'] : ['name', 'studentId'];
   const canManageOrg = (orgId: string) =>
     isLeagueAdmin || (me?.managedOrgIds ?? []).includes(orgId);
@@ -364,12 +365,14 @@ export default function OrgsPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
             <h1 className="page-title" style={{ marginBottom: 4 }}>
-              本组织管理
+              {isLeagueAdmin ? '组织管理' : isOrgAdmin ? '本组织管理' : '我的组织'}
             </h1>
             <p className="page-subtitle" style={{ marginBottom: 0 }}>
               {isLeagueAdmin
                 ? '团委端可在此新建组织、设置负责人并维护成员。'
-                : '社团端可在此管理自己负责的组织信息与成员。'}
+                : isOrgAdmin
+                ? '社团端可在此管理自己负责的组织信息与成员。'
+                : '学生端可查看所属组织信息与组织账号公告。'}
             </p>
           </div>
           <button type="button" onClick={load}>

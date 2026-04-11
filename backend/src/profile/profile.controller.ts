@@ -20,6 +20,24 @@ import { ProfileService } from './profile.service';
 class UpdateProfileDto {
   @IsOptional()
   @IsString()
+  name?: string;
+  @IsOptional()
+  @IsString()
+  studentId?: string;
+  @IsOptional()
+  @IsString()
+  phone?: string;
+  @IsOptional()
+  @IsString()
+  email?: string;
+  @IsOptional()
+  @IsString()
+  grade?: string;
+  @IsOptional()
+  @IsString()
+  major?: string;
+  @IsOptional()
+  @IsString()
   githubUrl?: string;
   @IsOptional()
   @IsString()
@@ -74,6 +92,23 @@ class ReviewDto {
   @IsOptional()
   @IsString()
   reason?: string;
+}
+
+class ItemReviewDto {
+  @IsBoolean()
+  approve!: boolean;
+  @IsOptional()
+  @IsString()
+  reason?: string;
+}
+
+class GradeMajorRequestDto {
+  @IsOptional()
+  @IsString()
+  grade?: string;
+  @IsOptional()
+  @IsString()
+  major?: string;
 }
 
 class SearchStudentsQuery {
@@ -139,6 +174,12 @@ export class ProfileController {
   }
 
   @UseGuards(JwtAuthGuard)
+  @Get('options')
+  optionsForUser() {
+    return this.profile.listMetaOptions();
+  }
+
+  @UseGuards(JwtAuthGuard)
   @Patch('me')
   updateMe(@Req() req: { user: { id: string } }, @Body() body: UpdateProfileDto) {
     return this.profile.updateMe(req.user.id, body);
@@ -168,6 +209,27 @@ export class ProfileController {
     return this.profile.removeTag(req.user.id, id);
   }
 
+  @UseGuards(JwtAuthGuard)
+  @Get('me/requests')
+  myRequests(@Req() req: { user: { id: string } }) {
+    return this.profile.myItemRequests(req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Get('me/grade-major-requests')
+  myGradeMajorRequests(@Req() req: { user: { id: string } }) {
+    return this.profile.myGradeMajorRequests(req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('me/grade-major-request')
+  submitGradeMajorRequest(
+    @Req() req: { user: { id: string } },
+    @Body() body: GradeMajorRequestDto,
+  ) {
+    return this.profile.submitGradeMajorRequest(req.user.id, body.grade, body.major);
+  }
+
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.LEAGUE_ADMIN)
   @Get('admin/pending')
@@ -180,6 +242,53 @@ export class ProfileController {
   @Patch('admin/:userId/review')
   review(@Param('userId') userId: string, @Body() body: ReviewDto) {
     return this.profile.review(userId, body);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Get('admin/item-requests/pending')
+  pendingItemRequests() {
+    return this.profile.listPendingItemRequests();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Patch('admin/item-requests/awards/:id/review')
+  reviewAwardRequest(
+    @Param('id') id: string,
+    @Body() body: ItemReviewDto,
+    @Req() req: { user: { id: string } },
+  ) {
+    return this.profile.reviewAwardRequest(id, body, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Patch('admin/item-requests/tags/:id/review')
+  reviewTagRequest(
+    @Param('id') id: string,
+    @Body() body: ItemReviewDto,
+    @Req() req: { user: { id: string } },
+  ) {
+    return this.profile.reviewTagRequest(id, body, req.user.id);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Get('admin/grade-major-requests/pending')
+  pendingGradeMajorRequests() {
+    return this.profile.pendingGradeMajorRequests();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Patch('admin/grade-major-requests/:id/review')
+  reviewGradeMajorRequest(
+    @Param('id') id: string,
+    @Body() body: ItemReviewDto,
+    @Req() req: { user: { id: string } },
+  ) {
+    return this.profile.reviewGradeMajorRequest(id, body, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

@@ -24,11 +24,11 @@
     },
     "student": {
       "dashboard": "Dashboard",
-      "timeline": "My timeline",
-      "tasks": "My tasks",
-      "orgs": "Organizations",
-      "profile": "My profile",
-      "notifications": "Notifications"
+      "timeline": "Personal plans",
+      "tasks": "Activity tasks",
+      "orgs": "My organizations",
+      "profile": "Profile",
+      "notifications": "Messages"
     },
     "orgAdmin": {
       "dashboard": "Dashboard",
@@ -87,11 +87,11 @@
       "LEAGUE_ADMIN": "League admin"
     },
     "desc": {
-      "timeline": "Plans, timetable, and upcoming items",
-      "tasks": "Org tasks and activity status",
-      "organizations": "Organization directory and structure",
-      "profile": "Multilingual profile, awards, and tags",
-      "notifications": "System notices and alerts",
+      "timeline": "Personal plans, timetable, and upcoming items",
+      "tasks": "Joined activities and progress tracking",
+      "organizations": "View affiliated organizations",
+      "profile": "Basic info, awards, and skill tags",
+      "notifications": "System notices and reminders",
       "admin": "Pending reviews and league tools"
     }
   },

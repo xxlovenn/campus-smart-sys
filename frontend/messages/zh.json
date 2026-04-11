@@ -21,11 +21,11 @@
     },
     "student": {
       "dashboard": "工作台",
-      "timeline": "我的日程",
-      "tasks": "我的任务",
-      "orgs": "组织",
+      "timeline": "个人计划",
+      "tasks": "活动任务",
+      "orgs": "我的组织",
       "profile": "个人档案",
-      "notifications": "通知"
+      "notifications": "消息通知"
     },
     "orgAdmin": {
       "dashboard": "工作台",
@@ -84,11 +84,11 @@
       "LEAGUE_ADMIN": "团委端"
     },
     "desc": {
-      "timeline": "个人计划、课表与临近事项",
-      "tasks": "组织任务与活动进度",
-      "organizations": "组织信息与结构",
-      "profile": "多语言档案、荣誉与标签",
-      "notifications": "系统通知与提醒",
+      "timeline": "个人计划、课程安排与临近事项",
+      "tasks": "参与活动任务与进度跟踪",
+      "organizations": "查看所属组织信息",
+      "profile": "基础信息、奖项荣誉与能力标签",
+      "notifications": "系统通知与待办提醒",
       "admin": "待审核档案与团委工具"
     }
   },

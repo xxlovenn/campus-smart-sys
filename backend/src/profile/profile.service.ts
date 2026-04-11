@@ -1,5 +1,5 @@
 import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { ProfileReviewStatus, UserRole } from '@prisma/client';
+import { ProfileItemAction, ProfileItemRequestStatus, ProfileReviewStatus, UserRole } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
 import { AuthorizationService } from '../authorization/authorization.service';
 import { DEFAULT_GRADE_OPTIONS, DEFAULT_MAJOR_OPTIONS } from './meta-options.defaults';
@@ -33,9 +33,29 @@ export class ProfileService {
 
   async updateMe(
     userId: string,
-    dto: { githubUrl?: string; identityZh?: string; identityEn?: string; identityRu?: string },
+    dto: {
+      name?: string;
+      studentId?: string;
+      phone?: string;
+      email?: string;
+      grade?: string;
+      major?: string;
+      githubUrl?: string;
+      identityZh?: string;
+      identityEn?: string;
+      identityRu?: string;
+    },
   ) {
     await this.getOrCreate(userId);
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        name: dto.name,
+        studentId: dto.studentId,
+        phone: dto.phone,
+        email: dto.email,
+      },
+    });
     return this.prisma.profile.update({
       where: { userId },
       data: {
@@ -43,8 +63,6 @@ export class ProfileService {
         identityZh: dto.identityZh,
         identityEn: dto.identityEn,
         identityRu: dto.identityRu,
-        reviewStatus: ProfileReviewStatus.PENDING,
-        rejectReason: null,
       },
       include: { awards: true, tags: true },
     });
@@ -54,20 +72,44 @@ export class ProfileService {
     userId: string,
     dto: { titleZh: string; titleEn: string; titleRu: string; proofUrl?: string },
   ) {
-    return this.prisma.award.create({
+    return this.prisma.awardChangeRequest.create({
       data: {
-        profileUserId: userId,
+        userId,
+        action: ProfileItemAction.ADD,
         titleZh: dto.titleZh,
         titleEn: dto.titleEn,
         titleRu: dto.titleRu,
         proofUrl: dto.proofUrl,
+        status: ProfileItemRequestStatus.PENDING,
       },
     });
   }
 
   async removeAward(userId: string, awardId: string) {
-    await this.prisma.award.deleteMany({ where: { id: awardId, profileUserId: userId } });
-    return { ok: true };
+    const award = await this.prisma.award.findFirst({ where: { id: awardId, profileUserId: userId } });
+    if (!award) throw new NotFoundException('Award not found');
+    const dup = await this.prisma.awardChangeRequest.findFirst({
+      where: {
+        userId,
+        awardId,
+        action: ProfileItemAction.DELETE,
+        status: ProfileItemRequestStatus.PENDING,
+      },
+      select: { id: true },
+    });
+    if (dup) throw new BadRequestException('Delete request already pending');
+    await this.prisma.awardChangeRequest.create({
+      data: {
+        userId,
+        awardId,
+        action: ProfileItemAction.DELETE,
+        titleZh: award.titleZh,
+        titleEn: award.titleEn,
+        titleRu: award.titleRu,
+        proofUrl: award.proofUrl,
+      },
+    });
+    return { ok: true, pending: true };
   }
 
   addTag(
@@ -81,13 +123,246 @@ export class ProfileService {
       nameRu: string;
     },
   ) {
-    return this.prisma.skillTag.create({
-      data: { profileUserId: userId, ...dto },
+    return this.prisma.tagChangeRequest.create({
+      data: {
+        userId,
+        action: ProfileItemAction.ADD,
+        categoryZh: dto.categoryZh,
+        categoryEn: dto.categoryEn,
+        categoryRu: dto.categoryRu,
+        nameZh: dto.nameZh,
+        nameEn: dto.nameEn,
+        nameRu: dto.nameRu,
+        status: ProfileItemRequestStatus.PENDING,
+      },
     });
   }
 
   async removeTag(userId: string, tagId: string) {
-    await this.prisma.skillTag.deleteMany({ where: { id: tagId, profileUserId: userId } });
+    const tag = await this.prisma.skillTag.findFirst({ where: { id: tagId, profileUserId: userId } });
+    if (!tag) throw new NotFoundException('Tag not found');
+    const dup = await this.prisma.tagChangeRequest.findFirst({
+      where: {
+        userId,
+        tagId,
+        action: ProfileItemAction.DELETE,
+        status: ProfileItemRequestStatus.PENDING,
+      },
+      select: { id: true },
+    });
+    if (dup) throw new BadRequestException('Delete request already pending');
+    await this.prisma.tagChangeRequest.create({
+      data: {
+        userId,
+        tagId,
+        action: ProfileItemAction.DELETE,
+        categoryZh: tag.categoryZh,
+        categoryEn: tag.categoryEn,
+        categoryRu: tag.categoryRu,
+        nameZh: tag.nameZh,
+        nameEn: tag.nameEn,
+        nameRu: tag.nameRu,
+      },
+    });
+    return { ok: true, pending: true };
+  }
+
+  async myItemRequests(userId: string) {
+    const [awardRequests, tagRequests] = await Promise.all([
+      this.prisma.awardChangeRequest.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+      }),
+      this.prisma.tagChangeRequest.findMany({
+        where: { userId },
+        orderBy: { createdAt: 'desc' },
+      }),
+    ]);
+    return { awardRequests, tagRequests };
+  }
+
+  async listPendingItemRequests() {
+    const [awardRequests, tagRequests] = await Promise.all([
+      this.prisma.awardChangeRequest.findMany({
+        where: { status: ProfileItemRequestStatus.PENDING },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          user: { select: { id: true, name: true, email: true, studentId: true } },
+        },
+      }),
+      this.prisma.tagChangeRequest.findMany({
+        where: { status: ProfileItemRequestStatus.PENDING },
+        orderBy: { createdAt: 'asc' },
+        include: {
+          user: { select: { id: true, name: true, email: true, studentId: true } },
+        },
+      }),
+    ]);
+    return { awardRequests, tagRequests };
+  }
+
+  async submitGradeMajorRequest(userId: string, grade?: string, major?: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { id: true, grade: true, major: true },
+    });
+    if (!user) throw new NotFoundException('User not found');
+
+    const toGrade = grade?.trim() || null;
+    const toMajor = major?.trim() || null;
+    if (toGrade === (user.grade ?? null) && toMajor === (user.major ?? null)) {
+      throw new BadRequestException('No grade/major changes detected');
+    }
+
+    const pending = await this.prisma.gradeMajorChangeRequest.findFirst({
+      where: { userId, status: ProfileItemRequestStatus.PENDING },
+      select: { id: true },
+    });
+    if (pending) throw new BadRequestException('A grade/major change request is already pending');
+
+    return this.prisma.gradeMajorChangeRequest.create({
+      data: {
+        userId,
+        fromGrade: user.grade,
+        fromMajor: user.major,
+        toGrade,
+        toMajor,
+      },
+    });
+  }
+
+  async myGradeMajorRequests(userId: string) {
+    return this.prisma.gradeMajorChangeRequest.findMany({
+      where: { userId },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  async pendingGradeMajorRequests() {
+    return this.prisma.gradeMajorChangeRequest.findMany({
+      where: { status: ProfileItemRequestStatus.PENDING },
+      orderBy: { createdAt: 'asc' },
+      include: {
+        user: { select: { id: true, name: true, email: true, studentId: true } },
+      },
+    });
+  }
+
+  async reviewGradeMajorRequest(
+    requestId: string,
+    dto: { approve: boolean; reason?: string },
+    reviewerId: string,
+  ) {
+    const req = await this.prisma.gradeMajorChangeRequest.findUnique({ where: { id: requestId } });
+    if (!req) throw new NotFoundException('Request not found');
+    if (req.status !== ProfileItemRequestStatus.PENDING) {
+      throw new BadRequestException('Request already reviewed');
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      if (dto.approve) {
+        await tx.user.update({
+          where: { id: req.userId },
+          data: {
+            grade: req.toGrade ?? null,
+            major: req.toMajor ?? null,
+          },
+        });
+      }
+      await tx.gradeMajorChangeRequest.update({
+        where: { id: requestId },
+        data: {
+          status: dto.approve ? ProfileItemRequestStatus.APPROVED : ProfileItemRequestStatus.REJECTED,
+          reason: dto.approve ? null : dto.reason ?? 'Rejected',
+          reviewerId,
+          reviewedAt: new Date(),
+        },
+      });
+    });
+    return { ok: true };
+  }
+
+  async reviewAwardRequest(
+    requestId: string,
+    dto: { approve: boolean; reason?: string },
+    reviewerId: string,
+  ) {
+    const req = await this.prisma.awardChangeRequest.findUnique({ where: { id: requestId } });
+    if (!req) throw new NotFoundException('Request not found');
+    if (req.status !== ProfileItemRequestStatus.PENDING) {
+      throw new BadRequestException('Request already reviewed');
+    }
+    await this.prisma.$transaction(async (tx) => {
+      if (dto.approve) {
+        if (req.action === ProfileItemAction.ADD) {
+          await tx.award.create({
+            data: {
+              profileUserId: req.userId,
+              titleZh: req.titleZh,
+              titleEn: req.titleEn,
+              titleRu: req.titleRu,
+              proofUrl: req.proofUrl ?? '',
+            },
+          });
+        } else if (req.action === ProfileItemAction.DELETE && req.awardId) {
+          await tx.award.deleteMany({
+            where: { id: req.awardId, profileUserId: req.userId },
+          });
+        }
+      }
+      await tx.awardChangeRequest.update({
+        where: { id: requestId },
+        data: {
+          status: dto.approve ? ProfileItemRequestStatus.APPROVED : ProfileItemRequestStatus.REJECTED,
+          reason: dto.approve ? null : dto.reason ?? 'Rejected',
+          reviewerId,
+          reviewedAt: new Date(),
+        },
+      });
+    });
+    return { ok: true };
+  }
+
+  async reviewTagRequest(
+    requestId: string,
+    dto: { approve: boolean; reason?: string },
+    reviewerId: string,
+  ) {
+    const req = await this.prisma.tagChangeRequest.findUnique({ where: { id: requestId } });
+    if (!req) throw new NotFoundException('Request not found');
+    if (req.status !== ProfileItemRequestStatus.PENDING) {
+      throw new BadRequestException('Request already reviewed');
+    }
+    await this.prisma.$transaction(async (tx) => {
+      if (dto.approve) {
+        if (req.action === ProfileItemAction.ADD) {
+          await tx.skillTag.create({
+            data: {
+              profileUserId: req.userId,
+              categoryZh: req.categoryZh,
+              categoryEn: req.categoryEn,
+              categoryRu: req.categoryRu,
+              nameZh: req.nameZh,
+              nameEn: req.nameEn,
+              nameRu: req.nameRu,
+            },
+          });
+        } else if (req.action === ProfileItemAction.DELETE && req.tagId) {
+          await tx.skillTag.deleteMany({
+            where: { id: req.tagId, profileUserId: req.userId },
+          });
+        }
+      }
+      await tx.tagChangeRequest.update({
+        where: { id: requestId },
+        data: {
+          status: dto.approve ? ProfileItemRequestStatus.APPROVED : ProfileItemRequestStatus.REJECTED,
+          reason: dto.approve ? null : dto.reason ?? 'Rejected',
+          reviewerId,
+          reviewedAt: new Date(),
+        },
+      });
+    });
     return { ok: true };
   }
 

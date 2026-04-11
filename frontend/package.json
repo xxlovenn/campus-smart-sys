@@ -5,7 +5,9 @@
   "scripts": {
     "dev": "next dev -p 3000",
     "build": "next build",
-    "start": "next start -p 3000 -H 0.0.0.0"
+    "start": "next start -p 3000 -H 0.0.0.0",
+    "lint": "eslint . --ignore-pattern .next --ignore-pattern node_modules",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
     "next": "14.2.18",
@@ -14,9 +16,12 @@
     "react-dom": "^18.3.1"
   },
   "devDependencies": {
+    "@eslint/eslintrc": "^3.3.5",
     "@types/node": "^22.10.2",
     "@types/react": "^18.3.12",
     "@types/react-dom": "^18.3.1",
+    "eslint": "^8.57.1",
+    "eslint-config-next": "^14.2.18",
     "typescript": "^5.7.2"
   }
 }

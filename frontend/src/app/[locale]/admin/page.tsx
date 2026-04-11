@@ -29,7 +29,6 @@ type MetaOptions = {
 };
 
 export default function AdminPage() {
-  const t = useTranslations('profile');
   const tc = useTranslations('common');
   const { token, ready } = useAuthGuard();
   const [me, setMe] = useState<Me | null>(null);

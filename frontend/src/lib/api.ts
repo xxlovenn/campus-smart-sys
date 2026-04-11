@@ -52,8 +52,7 @@ export async function apiFetch<T = unknown>(
   }
   const hasAuthToken = Boolean(opts.token);
   if (hasAuthToken) headers.set('Authorization', `Bearer ${opts.token}`);
-  const { token, ...rest } = opts;
-  const res = await fetch(joinUrl(getApiBase(), path), { ...rest, headers });
+  const res = await fetch(joinUrl(getApiBase(), path), { ...opts, headers });
   const text = await res.text();
   if (!res.ok) {
     if (res.status === 401 && hasAuthToken) {

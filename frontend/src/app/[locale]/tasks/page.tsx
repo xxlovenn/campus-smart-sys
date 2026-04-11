@@ -10,12 +10,30 @@ import { triField } from '@/lib/tri';
 type Me = {
   id: string;
   role: string;
+  managedOrgIds?: string[];
 };
 
 type Task = Record<string, unknown> & {
   id: string;
   status: string;
 };
+
+function relatedOrgIds(task: Task): string[] {
+  const rows = Array.isArray(task.relatedOrgs) ? task.relatedOrgs : [];
+  return rows
+    .map((row) => {
+      const o = row as Record<string, unknown>;
+      return typeof o.organizationId === 'string' ? o.organizationId : '';
+    })
+    .filter(Boolean);
+}
+
+function inManagedScope(task: Task, managedOrgIds: string[]) {
+  if (managedOrgIds.length === 0) return false;
+  const primaryOrgId = typeof task.primaryOrgId === 'string' ? task.primaryOrgId : '';
+  if (primaryOrgId && managedOrgIds.includes(primaryOrgId)) return true;
+  return relatedOrgIds(task).some((orgId) => managedOrgIds.includes(orgId));
+}
 
 type Organization = Record<string, unknown> & {
   id: string;
@@ -244,7 +262,10 @@ export default function TasksPage() {
     );
   }
 
-  const canCreate = me?.role === 'ORG_ADMIN' || me?.role === 'LEAGUE_ADMIN';
+  const managedOrgIds = me?.managedOrgIds ?? [];
+  const isLeagueAdmin = me?.role === 'LEAGUE_ADMIN';
+  const isOrgAdmin = !isLeagueAdmin && managedOrgIds.length > 0;
+  const canCreate = isLeagueAdmin || isOrgAdmin;
 
   return (
     <div className="page-container">
@@ -393,7 +414,12 @@ export default function TasksPage() {
               <ul className="list-clean">
                 {tasks.map((task) => {
                   const creator = task.creator as Record<string, unknown> | undefined;
-                  const canDelete = creator?.id === me?.id;
+                  const assignee = task.assignee as Record<string, unknown> | undefined;
+                  const isCreator = creator?.id === me?.id;
+                  const isAssignee = assignee?.id === me?.id;
+                  const managed = inManagedScope(task, managedOrgIds);
+                  const canChangeStatus = isLeagueAdmin || (isOrgAdmin ? managed : isCreator || isAssignee);
+                  const canDelete = isLeagueAdmin || (isOrgAdmin ? managed : isCreator);
 
                   return (
                     <li key={task.id} className="list-item">
@@ -438,6 +464,7 @@ export default function TasksPage() {
                             <select
                               value={task.status}
                               onChange={(e) => setStatus(task.id, e.target.value)}
+                              disabled={!canChangeStatus}
                             >
                               {['TODO', 'IN_PROGRESS', 'DONE', 'BLOCKED'].map((s) => (
                                 <option key={s} value={s}>
@@ -456,7 +483,7 @@ export default function TasksPage() {
                               删除
                             </button>
                           ) : (
-                            <button type="button" disabled title="只能删除自己创建的任务">
+                            <button type="button" disabled title="当前权限不可删除">
                               不可删除
                             </button>
                           )}

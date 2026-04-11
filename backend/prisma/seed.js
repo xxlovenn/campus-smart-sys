@@ -1,5 +1,13 @@
 /* eslint-disable @typescript-eslint/no-require-imports */
-const { PrismaClient, UserRole, TaskStatus, PlanPriority, PlanSource, ProfileReviewStatus } = require('@prisma/client');
+const {
+  PrismaClient,
+  UserRole,
+  OrganizationMemberRole,
+  TaskStatus,
+  PlanPriority,
+  PlanSource,
+  ProfileReviewStatus,
+} = require('@prisma/client');
 const bcrypt = require('bcrypt');
 const { randomUUID } = require('crypto');
 
@@ -24,7 +32,7 @@ async function main() {
 
   const orgAdmin = await prisma.user.upsert({
     where: { email: 'org@campus.demo' },
-    update: {},
+    update: { role: UserRole.STUDENT },
     create: {
       id: randomUUID(),
       email: 'org@campus.demo',
@@ -32,7 +40,7 @@ async function main() {
       name: '社团负责人',
       studentId: 'ORG001',
       phone: '13800000002',
-      role: UserRole.ORG_ADMIN,
+      role: UserRole.STUDENT,
     },
   });
 
@@ -82,11 +90,17 @@ async function main() {
     where: {
       userId_organizationId: { userId: orgAdmin.id, organizationId: org1.id },
     },
-    update: {},
+    update: {
+      memberRole: OrganizationMemberRole.ORG_ADMIN,
+      roleZh: '会长',
+      roleEn: 'President',
+      roleRu: 'Председатель',
+    },
     create: {
       id: randomUUID(),
       userId: orgAdmin.id,
       organizationId: org1.id,
+      memberRole: OrganizationMemberRole.ORG_ADMIN,
       roleZh: '会长',
       roleEn: 'President',
       roleRu: 'Председатель',

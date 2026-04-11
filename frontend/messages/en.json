@@ -13,6 +13,41 @@
     "notifications": "Notifications",
     "login": "Login"
   },
+  "sidebar": {
+    "accountFallback": "Unnamed user",
+    "pleaseLogin": "Please sign in",
+    "role": {
+      "STUDENT": "Student",
+      "ORG_ADMIN": "Club admin",
+      "LEAGUE_ADMIN": "League admin",
+      "GUEST": "Not signed in"
+    },
+    "student": {
+      "dashboard": "Dashboard",
+      "timeline": "My timeline",
+      "tasks": "My tasks",
+      "orgs": "Organizations",
+      "profile": "My profile",
+      "notifications": "Notifications"
+    },
+    "orgAdmin": {
+      "dashboard": "Dashboard",
+      "tasks": "Club activities",
+      "orgs": "Organization management",
+      "timeline": "Activity schedule",
+      "profile": "Member profiles",
+      "notifications": "Notifications"
+    },
+    "leagueAdmin": {
+      "dashboard": "Dashboard",
+      "admin": "League admin panel",
+      "orgs": "Organization management",
+      "tasks": "League tasks",
+      "timeline": "Campus schedule",
+      "profile": "Student profiles",
+      "notifications": "Notifications"
+    }
+  },
   "auth": {
     "email": "Email",
     "password": "Password",
@@ -34,7 +69,32 @@
     "reject": "Reject",
     "syncMock": "Sync mock timetable API"
   },
-  "dashboard": { "welcome": "Welcome", "cards": "Shortcuts" },
+  "dashboard": {
+    "title": "Dashboard",
+    "welcome": "Welcome",
+    "greeting": "Welcome, {name}",
+    "loginHint": "Sign in to use your dashboard:",
+    "subtitleStudent": "Timetable, plans, tasks, and your profile in one place.",
+    "subtitleOrgAdmin": "Coordinate club activities, tasks, and member workflows.",
+    "subtitleLeagueAdmin": "Review profiles, manage orgs, and monitor the task board.",
+    "quickEntry": "Shortcuts",
+    "quickEntryHint": "Entries are ordered for your role.",
+    "accountCard": "Account",
+    "studentIdLabel": "Student ID",
+    "role": {
+      "STUDENT": "Student",
+      "ORG_ADMIN": "Club admin",
+      "LEAGUE_ADMIN": "League admin"
+    },
+    "desc": {
+      "timeline": "Plans, timetable, and upcoming items",
+      "tasks": "Org tasks and activity status",
+      "organizations": "Organization directory and structure",
+      "profile": "Multilingual profile, awards, and tags",
+      "notifications": "System notices and alerts",
+      "admin": "Pending reviews and league tools"
+    }
+  },
   "timeline": {
     "plans": "Personal plans (timeline)",
     "schedule": "Timetable (incl. mock API)",

@@ -13,6 +13,11 @@ enum UserRole {
   LEAGUE_ADMIN
 }
 
+enum OrganizationMemberRole {
+  MEMBER
+  ORG_ADMIN
+}
+
 enum TaskStatus {
   TODO
   IN_PROGRESS
@@ -76,6 +81,7 @@ model OrganizationMember {
   id             String   @id @default(uuid())
   userId         String
   organizationId String
+  memberRole     OrganizationMemberRole @default(MEMBER)
   roleZh         String   @default("成员")
   roleEn         String   @default("Member")
   roleRu         String   @default("Участник")

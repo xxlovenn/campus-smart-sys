@@ -9,7 +9,8 @@
     "start:prod": "node dist/main",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate deploy",
-    "prisma:seed": "node prisma/seed.js"
+    "prisma:seed": "node prisma/seed.js",
+    "verify:permissions": "ts-node scripts/verify-permission-matrix.ts"
   },
   "dependencies": {
     "@nestjs/common": "^10.4.15",

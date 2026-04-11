@@ -10,6 +10,41 @@
     "notifications": "通知",
     "login": "登录"
   },
+  "sidebar": {
+    "accountFallback": "未命名用户",
+    "pleaseLogin": "请先登录",
+    "role": {
+      "STUDENT": "学生端",
+      "ORG_ADMIN": "社团端",
+      "LEAGUE_ADMIN": "团委端",
+      "GUEST": "未登录"
+    },
+    "student": {
+      "dashboard": "工作台",
+      "timeline": "我的日程",
+      "tasks": "我的任务",
+      "orgs": "组织",
+      "profile": "个人档案",
+      "notifications": "通知"
+    },
+    "orgAdmin": {
+      "dashboard": "工作台",
+      "tasks": "社团活动",
+      "orgs": "组织管理",
+      "timeline": "活动日程",
+      "profile": "成员信息",
+      "notifications": "通知"
+    },
+    "leagueAdmin": {
+      "dashboard": "工作台",
+      "admin": "团委后台",
+      "orgs": "组织管理",
+      "tasks": "团委任务",
+      "timeline": "校级日程",
+      "profile": "学生档案",
+      "notifications": "通知"
+    }
+  },
   "auth": {
     "email": "邮箱",
     "password": "密码",
@@ -32,8 +67,30 @@
     "syncMock": "同步模拟课表 API"
   },
   "dashboard": {
+    "title": "工作台",
     "welcome": "欢迎",
-    "cards": "快速入口"
+    "greeting": "欢迎，{name}",
+    "loginHint": "请先登录后使用工作台：",
+    "subtitleStudent": "查看课表与日程，处理个人任务与档案。",
+    "subtitleOrgAdmin": "统筹社团活动、任务协同与成员信息。",
+    "subtitleLeagueAdmin": "审核档案、管理组织与全局任务看板。",
+    "quickEntry": "快速入口",
+    "quickEntryHint": "按角色为你排序了最常用的功能。",
+    "accountCard": "当前账户",
+    "studentIdLabel": "学号",
+    "role": {
+      "STUDENT": "学生端",
+      "ORG_ADMIN": "社团端",
+      "LEAGUE_ADMIN": "团委端"
+    },
+    "desc": {
+      "timeline": "个人计划、课表与临近事项",
+      "tasks": "组织任务与活动进度",
+      "organizations": "组织信息与结构",
+      "profile": "多语言档案、荣誉与标签",
+      "notifications": "系统通知与提醒",
+      "admin": "待审核档案与团委工具"
+    }
   },
   "timeline": {
     "plans": "个人计划（时间轴）",

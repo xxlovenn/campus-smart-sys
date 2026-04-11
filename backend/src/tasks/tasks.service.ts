@@ -5,18 +5,25 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { TaskStatus, UserRole } from '@prisma/client';
+import { AuthorizationService } from '../authorization/authorization.service';
+import { canCreateTask, canDeleteTask, canUpdateTaskStatus } from '../authorization/permission.policy';
 import { PrismaService } from '../prisma/prisma.service';
 
 @Injectable()
 export class TasksService {
-  constructor(private prisma: PrismaService) {}
+  constructor(
+    private prisma: PrismaService,
+    private authorization: AuthorizationService,
+  ) {}
 
-  private async memberOrgIds(userId: string) {
-    const rows = await this.prisma.organizationMember.findMany({
-      where: { userId },
-      select: { organizationId: true },
+  private async inManagedScope(taskId: string, primaryOrgId: string | null, managedOrgIds: string[]) {
+    if (managedOrgIds.length === 0) return false;
+    if (primaryOrgId && managedOrgIds.includes(primaryOrgId)) return true;
+    const related = await this.prisma.taskOrganization.findFirst({
+      where: { taskId, organizationId: { in: managedOrgIds } },
+      select: { taskId: true },
     });
-    return rows.map((r) => r.organizationId);
+    return !!related;
   }
 
   async listVisible(userId: string, role: UserRole) {
@@ -32,14 +39,13 @@ export class TasksService {
       });
     }
 
-    const orgIds = await this.memberOrgIds(userId);
-
-    if (role === UserRole.ORG_ADMIN) {
+    const managedOrgIds = await this.authorization.managedOrgIds(userId);
+    if (managedOrgIds.length > 0) {
       return this.prisma.task.findMany({
         where: {
           OR: [
-            { primaryOrgId: { in: orgIds } },
-            { relatedOrgs: { some: { organizationId: { in: orgIds } } } },
+            { primaryOrgId: { in: managedOrgIds } },
+            { relatedOrgs: { some: { organizationId: { in: managedOrgIds } } } },
             { assigneeId: userId },
             { creatorId: userId },
           ],
@@ -104,20 +110,21 @@ export class TasksService {
       relatedOrgIds?: string[];
     },
   ) {
-    if (role === UserRole.STUDENT) {
-      throw new ForbiddenException('Students cannot create org tasks');
-    }
+    const managedOrgIds = await this.authorization.managedOrgIds(userId);
+    const effectiveRole = role === UserRole.LEAGUE_ADMIN
+      ? UserRole.LEAGUE_ADMIN
+      : managedOrgIds.length > 0
+        ? UserRole.ORG_ADMIN
+        : UserRole.STUDENT;
 
-    const orgIds = await this.memberOrgIds(userId);
-
-    if (role === UserRole.ORG_ADMIN) {
-      if (!dto.primaryOrgId || !orgIds.includes(dto.primaryOrgId)) {
-        throw new ForbiddenException('Invalid primary organization');
+    if (!canCreateTask(effectiveRole, dto.primaryOrgId, managedOrgIds)) {
+      if (effectiveRole === UserRole.LEAGUE_ADMIN) {
+        throw new ForbiddenException('primaryOrgId is required');
       }
-    }
-
-    if (role === UserRole.LEAGUE_ADMIN && !dto.primaryOrgId) {
-      throw new ForbiddenException('primaryOrgId is required');
+      if (effectiveRole === UserRole.ORG_ADMIN) {
+        throw new ForbiddenException('Org admin can only create tasks in managed organizations');
+      }
+      throw new ForbiddenException('Students cannot create org tasks');
     }
 
     const now = new Date();
@@ -194,23 +201,15 @@ export class TasksService {
       return this.prisma.task.update({ where: { id: taskId }, data: { status } });
     }
 
-    const orgIds = await this.memberOrgIds(userId);
+    const managedOrgIds = await this.authorization.managedOrgIds(userId);
+    const effectiveRole = managedOrgIds.length > 0 ? UserRole.ORG_ADMIN : UserRole.STUDENT;
     const isAssignee = task.assigneeId === userId;
     const isCreator = task.creatorId === userId;
-    const inPrimaryOrg = !!(task.primaryOrgId && orgIds.includes(task.primaryOrgId));
-    const inRelatedOrg = !!(await this.prisma.taskOrganization.findFirst({
-      where: { taskId, organizationId: { in: orgIds } },
-    }));
+    const inManaged = await this.inManagedScope(taskId, task.primaryOrgId, managedOrgIds);
+    const isCreatorOrAssignee = isAssignee || isCreator;
 
-    if (role === UserRole.ORG_ADMIN) {
-      if (!isAssignee && !isCreator && !inPrimaryOrg && !inRelatedOrg) {
-        throw new ForbiddenException('No permission to update this task');
-      }
-      return this.prisma.task.update({ where: { id: taskId }, data: { status } });
-    }
-
-    if (!isAssignee && !isCreator) {
-      throw new ForbiddenException('Students can only manage their own tasks');
+    if (!canUpdateTaskStatus(effectiveRole, isCreatorOrAssignee, inManaged)) {
+      throw new ForbiddenException('No permission to update this task');
     }
 
     return this.prisma.task.update({ where: { id: taskId }, data: { status } });
@@ -225,16 +224,14 @@ export class TasksService {
       throw new NotFoundException();
     }
 
-    if (role === UserRole.STUDENT && task.creatorId !== userId) {
-      throw new ForbiddenException('Students can only delete tasks created by self');
-    }
-
-    if (role === UserRole.ORG_ADMIN && task.creatorId !== userId) {
-      throw new ForbiddenException('Org admin can only delete tasks created by self');
-    }
-
-    if (role === UserRole.LEAGUE_ADMIN && task.creatorId !== userId) {
-      throw new ForbiddenException('League admin can only delete tasks created by self');
+    if (role !== UserRole.LEAGUE_ADMIN) {
+      const managedOrgIds = await this.authorization.managedOrgIds(userId);
+      const effectiveRole = managedOrgIds.length > 0 ? UserRole.ORG_ADMIN : UserRole.STUDENT;
+      const inManaged = await this.inManagedScope(taskId, task.primaryOrgId, managedOrgIds);
+      const isCreator = task.creatorId === userId;
+      if (!canDeleteTask(effectiveRole, isCreator, inManaged)) {
+        throw new ForbiddenException('No permission to delete this task');
+      }
     }
 
     await this.prisma.taskOrganization.deleteMany({

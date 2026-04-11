@@ -8,7 +8,7 @@ import { getToken } from '@/lib/auth-storage';
 import { triField } from '@/lib/tri';
 
 type Org = Record<string, unknown>;
-type Me = { role: string };
+type Me = { role: string; managedOrgIds?: string[] };
 
 export default function OrgsPage() {
   const t = useTranslations('orgs');
@@ -47,9 +47,14 @@ export default function OrgsPage() {
   async function onCreate(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
-    await apiFetch('/organizations', { method: 'POST', token, body: JSON.stringify(form) });
-    setForm({ nameZh: '', nameEn: '', nameRu: '', typeZh: '', typeEn: '', typeRu: '' });
-    load();
+    try {
+      await apiFetch('/organizations', { method: 'POST', token, body: JSON.stringify(form) });
+      setForm({ nameZh: '', nameEn: '', nameRu: '', typeZh: '', typeEn: '', typeRu: '' });
+      setErr(null);
+      load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : tc('error'));
+    }
   }
 
   if (!token) {

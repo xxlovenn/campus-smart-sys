@@ -314,7 +314,71 @@
     "addPlan": "New plan",
     "titleZh": "Title (ZH)",
     "titleEn": "Title (EN)",
-    "titleRu": "Title (RU)"
+    "titleRu": "Title (RU)",
+    "title": "Unified Timeline",
+    "subtitle": "View timetable, tasks, and plans by day/week/month with full personal plan CRUD and status management.",
+    "loadingAuth": "Checking login status...",
+    "searchPlaceholder": "Search plans/tasks",
+    "labels": {
+      "plan": "Plan",
+      "task": "Task",
+      "note": "Note"
+    },
+    "range": {
+      "day": "Day",
+      "week": "Week",
+      "month": "Month",
+      "view": "{label} view"
+    },
+    "create": {
+      "title": "Create Plan",
+      "name": "Plan name",
+      "note": "Location/Note",
+      "startAt": "Start time",
+      "endAt": "End time"
+    },
+    "manage": {
+      "title": "Plan Management"
+    },
+    "edit": {
+      "title": "Edit Plan"
+    },
+    "status": {
+      "todo": "To-do",
+      "done": "Done"
+    },
+    "scheduleSection": {
+      "title": "Timetable (Mock API)",
+      "empty": "No timetable data",
+      "weekday": "Weekday {day}"
+    },
+    "actions": {
+      "refresh": "Refresh",
+      "create": "Create Plan",
+      "markTodo": "Mark as to-do",
+      "markDone": "Mark as done",
+      "edit": "Edit",
+      "delete": "Delete",
+      "save": "Save",
+      "cancel": "Cancel"
+    },
+    "empty": {
+      "range": "No items in current range",
+      "plans": "No plans yet"
+    },
+    "confirm": {
+      "create": "Create this plan?",
+      "save": "Save changes to this plan?",
+      "remove": "Delete this plan?"
+    },
+    "errors": {
+      "load": "Failed to load",
+      "titleRequired": "Please enter a plan name",
+      "create": "Failed to create",
+      "save": "Failed to save",
+      "remove": "Failed to delete",
+      "status": "Failed to update status"
+    }
   },
   "tasks": {
     "list": "Tasks",
@@ -358,6 +422,108 @@
     "tags": "Skill tags",
     "pending": "Pending reviews",
     "review": "Review",
+    "loadingAuth": "Checking login status...",
+    "status": {
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "pending": "Pending review"
+    },
+    "errors": {
+      "load": "Failed to load",
+      "save": "Failed to save",
+      "submitRequest": "Failed to submit request",
+      "submitReview": "Failed to submit for review",
+      "deleteRequest": "Failed to submit delete request",
+      "review": "Review failed",
+      "query": "Query failed"
+    },
+    "confirm": {
+      "saveBasic": "Save basic information?",
+      "submitGradeMajor": "Submit grade/major change request? It takes effect after committee approval.",
+      "submitProfile": "Submit profile for committee review?",
+      "submitAward": "Submit award add request?",
+      "submitTag": "Submit tag add request?",
+      "deleteAward": "Request to delete this award? It takes effect after committee approval.",
+      "deleteTag": "Request to delete this tag? It takes effect after committee approval.",
+      "approveRequest": "Approve this request?",
+      "rejectRequest": "Reject this request?",
+      "approveGradeMajor": "Approve this grade/major change request?",
+      "rejectGradeMajor": "Reject this grade/major change request?",
+      "saveStudent": "Save changes to this student's profile?"
+    },
+    "tips": {
+      "identity": "Add identity details to help committee verification.",
+      "awards": "Recommend submitting at least one award record.",
+      "tags": "Recommend adding skill tags to highlight strengths.",
+      "github": "Recommend adding a GitHub link to show practical ability."
+    },
+    "latest": {
+      "title": "Recent change requests",
+      "empty": "No request records",
+      "gradeMajor": "Grade/Major change: {from} → {to}",
+      "award": "Award {action}: {title}",
+      "tag": "Tag {action}: {category} / {name}"
+    },
+    "labels": {
+      "unset": "Unset",
+      "gradeSuffix": "",
+      "add": "Add",
+      "remove": "Remove",
+      "student": "Student",
+      "award": "Award",
+      "tag": "Tag",
+      "itemsCount": "{done}/{total} items",
+      "notSubmitted": "Not submitted",
+      "notReviewed": "Not reviewed",
+      "reviewer": "Reviewer",
+      "submittedAt": "Submitted at",
+      "reviewedAt": "Reviewed at",
+      "rejectReason": "Reject reason"
+    },
+    "user": {
+      "title": "My Profile"
+    },
+    "admin": {
+      "title": "Student Profile Center",
+      "subtitle": "Search students, view and maintain profiles, and process grade/major, award, and tag change reviews.",
+      "reviewSection": "Profile change review (grade/major / awards / tags)",
+      "gradeMajorChange": "Grade/Major change",
+      "noPending": "No pending review requests",
+      "searchTitle": "Student Profile Center · Search",
+      "searchPlaceholder": "Enter search keyword",
+      "searchByName": "By name",
+      "searchByStudentId": "By student ID",
+      "searchByIdCard": "By ID card",
+      "modalTitle": "Student Profile Center",
+      "modalTitleWithName": "Student Profile Center · {name}"
+    },
+    "fields": {
+      "name": "Name",
+      "studentId": "Student ID",
+      "phone": "Phone",
+      "email": "Email",
+      "grade": "Grade",
+      "major": "Major",
+      "idCard": "ID card (committee visible)",
+      "className": "Class",
+      "identitySingle": "Identity info (single-language input)",
+      "chooseGrade": "Choose grade",
+      "chooseMajor": "Choose major",
+      "identityPlaceholder": "Identity info (single-language input, auto synced to all locales)",
+      "tagCategory": "Tag category (single-language input)",
+      "tagName": "Tag name (single-language input)",
+      "awardTitle": "Award title (single-language input)",
+      "proofUrl": "Proof URL (optional)",
+      "rejectReasonOptional": "Reject reason (optional)"
+    },
+    "identityHint": "Recommended: ethnicity, ID number, volunteer number, political status, etc.",
+    "practiceHint": "At this stage, achievements are recorded via awards and skill tags; real practice API can be added later.",
+    "practiceSuggestion": "Recommended additions: volunteer hours, service activities, social practice records.",
+    "picker": {
+      "gradeTitle": "Choose grade",
+      "majorTitle": "Choose major",
+      "empty": "No options available. Ask committee admin to create grade/major options first."
+    },
     "center": {
       "subtitle": "Save profile drafts first, then submit for committee review with traceable feedback",
       "overviewTitle": "My archive overview",
@@ -383,8 +549,135 @@
         "submitGradeMajor": "Submit grade/major change request",
         "saveDraft": "Save basic draft",
         "submitTag": "Submit new tag request",
-        "submitAward": "Submit new award request"
+        "submitAward": "Submit new award request",
+        "requestDelete": "Request delete",
+        "approve": "Approve",
+        "reject": "Reject",
+        "search": "Search",
+        "viewAndEdit": "View and edit",
+        "saveAndSync": "Save and sync",
+        "select": "Select"
       }
+    }
+  },
+  "admin": {
+    "loadingAuth": "Checking login status...",
+    "leagueOnly": "League admin only. Current role: {role}",
+    "title": "League Admin Console",
+    "subtitle": "Handle profile reviews and activity approval requests in one place.",
+    "status": {
+      "approved": "Approved",
+      "rejected": "Rejected",
+      "pending": "Pending"
+    },
+    "waiting": {
+      "unknown": "Waiting time unknown",
+      "hours": "Waiting for {count} hours",
+      "days": "Waiting for {count} days"
+    },
+    "timeline": {
+      "profileTitle": "Profile review · {name}",
+      "profileApproved": "Profile approved",
+      "profileRejected": "Profile rejected",
+      "taskTitle": "Task review · {title}",
+      "taskApproved": "Task request approved",
+      "taskRejected": "Task request rejected"
+    },
+    "labels": {
+      "leagueAdmin": "League admin",
+      "unnamedTaskRequest": "Unnamed activity request",
+      "unknownApplicant": "Unknown applicant",
+      "unassignedOrg": "Unassigned organization",
+      "unnamed": "Unnamed",
+      "reviewer": "Reviewer",
+      "time": "Time",
+      "note": "Note",
+      "notSelected": "Not selected",
+      "title": "Title",
+      "org": "Organization",
+      "submittedAt": "Submitted at"
+    },
+    "reminder": {
+      "title": "Pending reminder",
+      "hasPending": "There are pending reviews. Prioritize the earliest submissions.",
+      "empty": "No pending reviews. You can inspect recent review history.",
+      "pendingProfiles": "Pending profiles {count}",
+      "pendingTasks": "Pending tasks {count}"
+    },
+    "overview": {
+      "title": "Review overview",
+      "pendingProfiles": "Pending profile reviews",
+      "pendingTaskRequests": "Pending task requests",
+      "todayHandled": "Handled today",
+      "recentRejected": "Rejected in last 7 days"
+    },
+    "focus": {
+      "title": "Today priority",
+      "both": "Prioritize profile \"{profile}\" and task \"{task}\"",
+      "profile": "Prioritize profile \"{profile}\"",
+      "task": "Prioritize task \"{task}\"",
+      "empty": "No pending items right now. Check review records below."
+    },
+    "queue": {
+      "title": "Pending queue",
+      "profileTitle": "Profile: {name}",
+      "topList": "Top todo list (up to 5)",
+      "empty": "No pending items",
+      "urgent": "Most urgent",
+      "applicant": "Applicant",
+      "target": "Review target",
+      "profileTarget": "Student profile",
+      "taskTarget": "Organization activity request",
+      "org": "Organization",
+      "submittedAt": "Submitted at"
+    },
+    "taskReview": {
+      "title": "Activity request review",
+      "selectPlaceholder": "Select a pending activity request",
+      "currentApplicant": "Current applicant",
+      "rejectReasonPlaceholder": "Reject reason (optional)"
+    },
+    "records": {
+      "quickTitle": "Recent reviews (quick view)",
+      "empty": "No review records",
+      "tab": "Review records",
+      "timelineTab": "Review timeline",
+      "profileTitle": "Profile review records",
+      "taskTitle": "Task review records",
+      "timelineTitle": "Review timeline (latest 16)",
+      "timelineEmpty": "No review timeline data"
+    },
+    "meta": {
+      "title": "Grade and major management",
+      "grades": "Grades",
+      "majors": "Majors",
+      "gradePlaceholder": "New grade (e.g. 2025)",
+      "majorPlaceholder": "New major (e.g. Computer Science)",
+      "addGrade": "Add grade",
+      "addMajor": "Add major",
+      "empty": "None"
+    },
+    "taskCenter": {
+      "title": "League task module",
+      "subtitle": "Go to task center for global board and approval workflow.",
+      "enter": "Enter task center"
+    },
+    "actions": {
+      "jumpPending": "Jump to pending items",
+      "jumpTaskReview": "Jump to task review",
+      "approve": "Approve",
+      "reject": "Reject",
+      "detail": "Details",
+      "quickApprove": "Quick approve",
+      "quickReject": "Quick reject"
+    },
+    "confirm": {
+      "approveProfile": "Approve this profile review?",
+      "rejectProfile": "Reject this profile review?",
+      "approveTask": "Approve this activity request?",
+      "rejectTask": "Reject this activity request?",
+      "addGrade": "Add this grade?",
+      "addMajor": "Add this major?"
     }
   },
   "notifications": { "title": "Notifications", "markAll": "Mark all read" }

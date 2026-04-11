@@ -299,6 +299,14 @@ export default function TasksPage() {
     load();
   }, [load]);
 
+  useEffect(() => {
+    if (!token) return;
+    const timer = setInterval(() => {
+      load();
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [load, token]);
+
   async function setStatus(id: string, status: string) {
     if (!token) return;
     if (!confirmAction(`确认将任务状态更新为 ${status} 吗？`)) return;

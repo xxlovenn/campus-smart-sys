@@ -19,6 +19,7 @@ type Org = {
   descriptionZh?: string;
   descriptionEn?: string;
   descriptionRu?: string;
+  logoUrl?: string | null;
   leader?: { id: string; name?: string; email?: string; studentId?: string | null } | null;
   adminAccount?: string | null;
   adminPassword?: string | null;
@@ -46,6 +47,7 @@ type OrgDetail = {
   descriptionZh?: string;
   descriptionEn?: string;
   descriptionRu?: string;
+  logoUrl?: string | null;
   leader?: { id: string; name?: string; email?: string; studentId?: string | null } | null;
   adminAccount?: string | null;
   adminPassword?: string | null;
@@ -83,6 +85,7 @@ export default function OrgsPage() {
     name: '',
     description: '',
     type: '',
+    logoUrl: '',
     leaderUserId: '',
   });
   const [leaderSearchMode, setLeaderSearchMode] = useState<SearchMode>('name');
@@ -93,6 +96,7 @@ export default function OrgsPage() {
     name: '',
     type: '',
     description: '',
+    logoUrl: '',
     leaderUserId: '',
   });
   const [editLeaderMode, setEditLeaderMode] = useState<SearchMode>('name');
@@ -160,6 +164,7 @@ export default function OrgsPage() {
           typeZh: form.type.trim(),
           typeEn: form.type.trim(),
           typeRu: form.type.trim(),
+          logoUrl: form.logoUrl.trim() || undefined,
           leaderUserId: form.leaderUserId || undefined,
         }),
       });
@@ -172,6 +177,7 @@ export default function OrgsPage() {
         name: '',
         description: '',
         type: '',
+        logoUrl: '',
         leaderUserId: '',
       });
       setLeaderKeyword('');
@@ -206,6 +212,7 @@ export default function OrgsPage() {
         name: d.nameZh || '',
         type: d.typeZh || '',
         description: d.descriptionZh || '',
+        logoUrl: d.logoUrl || '',
         leaderUserId: d.leader?.id || '',
       });
       setEditLeaderKeyword('');
@@ -281,6 +288,7 @@ export default function OrgsPage() {
           typeZh: editForm.type.trim(),
           typeEn: editForm.type.trim(),
           typeRu: editForm.type.trim(),
+          logoUrl: editForm.logoUrl.trim() || undefined,
           leaderUserId: editForm.leaderUserId || undefined,
         }),
       });
@@ -451,6 +459,11 @@ export default function OrgsPage() {
             value={form.description}
             onChange={(e) => setForm((s) => ({ ...s, description: e.target.value }))}
           />
+          <input
+            placeholder="组织 Logo URL（可选）"
+            value={form.logoUrl}
+            onChange={(e) => setForm((s) => ({ ...s, logoUrl: e.target.value }))}
+          />
 
           <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
             <h4 style={{ margin: 0 }}>负责人选择（档案式检索）</h4>
@@ -541,6 +554,13 @@ export default function OrgsPage() {
                   }}
                 >
                   <div style={{ display: 'grid', gap: 4 }}>
+                    {o.logoUrl ? (
+                      <img
+                        src={o.logoUrl}
+                        alt={triField(o as unknown as Record<string, unknown>, 'name', locale)}
+                        style={{ width: 44, height: 44, borderRadius: 10, border: '1px solid var(--border)', objectFit: 'cover' }}
+                      />
+                    ) : null}
                     <strong>{triField(o as unknown as Record<string, unknown>, 'name', locale)}</strong>
                     <span className="topbar-muted">
                       {triField(o as unknown as Record<string, unknown>, 'type', locale)}
@@ -608,6 +628,11 @@ export default function OrgsPage() {
               rows={3}
               value={editForm.description}
               onChange={(e) => setEditForm((s) => ({ ...s, description: e.target.value }))}
+            />
+            <input
+              placeholder="组织 Logo URL（可选）"
+              value={editForm.logoUrl}
+              onChange={(e) => setEditForm((s) => ({ ...s, logoUrl: e.target.value }))}
             />
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
               <h4 style={{ margin: 0 }}>负责人选择（档案式检索）</h4>

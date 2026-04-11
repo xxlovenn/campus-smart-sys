@@ -71,6 +71,11 @@ enum PlanPriority {
   HIGH
 }
 
+enum PlanStatus {
+  TODO
+  DONE
+}
+
 enum ProfileReviewStatus {
   PENDING
   APPROVED
@@ -136,6 +141,7 @@ model Organization {
   typeZh        String
   typeEn        String
   typeRu        String
+  logoUrl       String?  @default("")
   leaderUserId  String?
   adminUserId   String?
   adminAccount  String?  @unique
@@ -239,7 +245,11 @@ model PersonalPlan {
   titleZh          String
   titleEn          String
   titleRu          String
+  noteZh           String       @default("")
+  noteEn           String       @default("")
+  noteRu           String       @default("")
   priority         PlanPriority @default(MEDIUM)
+  status           PlanStatus   @default(TODO)
   source           PlanSource   @default(PERSONAL)
   dueAt            DateTime?
   syncedToTimeline Boolean      @default(true)

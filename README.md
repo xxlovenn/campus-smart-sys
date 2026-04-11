@@ -36,21 +36,16 @@ docker compose up -d --build
 
 ## Backend 启动与初始化（推荐）
 
-- 正常容器启动（生产推荐，不重复 seed）：
+- 正常容器启动（评审推荐）：
 
 ```bash
 docker compose up -d --build
 ```
 
-> backend 容器启动流程为：`prisma migrate deploy` + `node dist/main.js`（通过 `npm run start:container`），不会在每次启动时自动执行 seed。
+> backend 容器启动流程为：`prisma migrate deploy` + `prisma seed` + `node dist/main.js`（通过 `npm run start:container`）。  
+> 也就是说，按评审标准流程启动后会自动具备演示账号与演示数据，无需额外执行初始化命令。
 
-- 首次初始化演示数据（仅需要时执行一次）：
-
-```bash
-docker compose exec backend npm run db:init
-```
-
-- 仅重置演示数据（不会重启服务）：
+- 如需手动重置演示数据（不会重启服务）：
 
 ```bash
 docker compose exec backend npm run db:reseed

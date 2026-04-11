@@ -311,7 +311,71 @@
     "addPlan": "新建计划",
     "titleZh": "标题（中文）",
     "titleEn": "Title (EN)",
-    "titleRu": "Заголовок (RU)"
+    "titleRu": "Заголовок (RU)",
+    "title": "统一时间轴",
+    "subtitle": "支持按日 / 周 / 月查看课表、任务与计划，并提供个人计划的增删改查与状态管理。",
+    "loadingAuth": "正在校验登录状态...",
+    "searchPlaceholder": "搜索计划/任务",
+    "labels": {
+      "plan": "计划",
+      "task": "任务",
+      "note": "备注"
+    },
+    "range": {
+      "day": "日",
+      "week": "周",
+      "month": "月",
+      "view": "{label}视图"
+    },
+    "create": {
+      "title": "新建计划",
+      "name": "计划名称",
+      "note": "地点/备注",
+      "startAt": "开始时间",
+      "endAt": "结束时间"
+    },
+    "manage": {
+      "title": "计划管理"
+    },
+    "edit": {
+      "title": "编辑计划"
+    },
+    "status": {
+      "todo": "待处理",
+      "done": "已完成"
+    },
+    "scheduleSection": {
+      "title": "课表（模拟 API）",
+      "empty": "暂无课表数据",
+      "weekday": "周{day}"
+    },
+    "actions": {
+      "refresh": "刷新",
+      "create": "创建计划",
+      "markTodo": "标记待办",
+      "markDone": "标记完成",
+      "edit": "编辑",
+      "delete": "删除",
+      "save": "保存",
+      "cancel": "取消"
+    },
+    "empty": {
+      "range": "当前范围暂无事项",
+      "plans": "暂无计划"
+    },
+    "confirm": {
+      "create": "确认创建计划吗？",
+      "save": "确认保存计划修改吗？",
+      "remove": "确认删除该计划吗？"
+    },
+    "errors": {
+      "load": "加载失败",
+      "titleRequired": "请输入计划名称",
+      "create": "创建失败",
+      "save": "保存失败",
+      "remove": "删除失败",
+      "status": "更新状态失败"
+    }
   },
   "tasks": {
     "list": "任务列表",
@@ -355,6 +419,108 @@
     "tags": "能力标签",
     "pending": "待审核档案",
     "review": "审核",
+    "loadingAuth": "正在校验登录状态...",
+    "status": {
+      "approved": "已通过",
+      "rejected": "已驳回",
+      "pending": "待审核"
+    },
+    "errors": {
+      "load": "加载失败",
+      "save": "保存失败",
+      "submitRequest": "提交申请失败",
+      "submitReview": "提交审核失败",
+      "deleteRequest": "提交删除申请失败",
+      "review": "审核失败",
+      "query": "查询失败"
+    },
+    "confirm": {
+      "saveBasic": "确认保存基础信息吗？",
+      "submitGradeMajor": "确认提交年级/专业修改申请吗？提交后需经团委审核通过方可生效。",
+      "submitProfile": "确认提交个人档案进入团委审核吗？",
+      "submitAward": "确认提交奖项添加审核申请吗？",
+      "submitTag": "确认提交标签添加审核申请吗？",
+      "deleteAward": "确认申请删除该奖项吗？需团委审核通过后生效。",
+      "deleteTag": "确认申请删除该标签吗？需团委审核通过后生效。",
+      "approveRequest": "确认通过该申请吗？",
+      "rejectRequest": "确认驳回该申请吗？",
+      "approveGradeMajor": "确认通过该年级/专业变更申请吗？",
+      "rejectGradeMajor": "确认驳回该年级/专业变更申请吗？",
+      "saveStudent": "确认保存该学生档案修改吗？"
+    },
+    "tips": {
+      "identity": "请补充身份信息，便于团委核验。",
+      "awards": "建议至少提交一条奖项/荣誉记录。",
+      "tags": "建议补充能力标签，突出个人优势。",
+      "github": "建议补充 GitHub 链接以展示实践能力。"
+    },
+    "latest": {
+      "title": "最近变更申请记录",
+      "empty": "暂无申请记录",
+      "gradeMajor": "年级/专业变更：{from} → {to}",
+      "award": "奖项{action}：{title}",
+      "tag": "标签{action}：{category} / {name}"
+    },
+    "labels": {
+      "unset": "未设置",
+      "gradeSuffix": "级",
+      "add": "新增",
+      "remove": "删除",
+      "student": "学生",
+      "award": "奖项",
+      "tag": "标签",
+      "itemsCount": "{done}/{total} 项",
+      "notSubmitted": "未提交",
+      "notReviewed": "未审核",
+      "reviewer": "审核人",
+      "submittedAt": "提交时间",
+      "reviewedAt": "审核时间",
+      "rejectReason": "驳回原因"
+    },
+    "user": {
+      "title": "个人档案"
+    },
+    "admin": {
+      "title": "学生档案中心",
+      "subtitle": "检索学生、查看并维护档案；处理年级/专业、奖项与标签等变更审核。",
+      "reviewSection": "档案变更审核（年级专业 / 奖项 / 标签）",
+      "gradeMajorChange": "年级/专业变更",
+      "noPending": "暂无待审核申请",
+      "searchTitle": "学生档案中心 · 列表检索",
+      "searchPlaceholder": "输入搜索关键词",
+      "searchByName": "按姓名",
+      "searchByStudentId": "按学号",
+      "searchByIdCard": "按身份证",
+      "modalTitle": "学生档案中心",
+      "modalTitleWithName": "学生档案中心 · {name}"
+    },
+    "fields": {
+      "name": "姓名",
+      "studentId": "学号",
+      "phone": "手机号",
+      "email": "邮箱",
+      "grade": "年级",
+      "major": "专业",
+      "idCard": "身份证号（团委可见）",
+      "className": "班级",
+      "identitySingle": "身份信息（单语输入）",
+      "chooseGrade": "请选择年级",
+      "chooseMajor": "请选择专业",
+      "identityPlaceholder": "身份信息（单语输入，自动互通多语言）",
+      "tagCategory": "标签分类（单语输入，多语言互通）",
+      "tagName": "标签名称（单语输入，多语言互通）",
+      "awardTitle": "奖项名称（单语输入，多语言互通）",
+      "proofUrl": "证明链接（可选）",
+      "rejectReasonOptional": "驳回原因（可选）"
+    },
+    "identityHint": "建议填写民族、身份证号、志愿号、政治面貌等，便于审核核验。",
+    "practiceHint": "当前阶段通过“奖项荣誉”与“能力标签”记录实践成果，后续可扩展真实实践 API。",
+    "practiceSuggestion": "建议补充：志愿时长、服务活动、社会实践记录。",
+    "picker": {
+      "gradeTitle": "选择年级（单位：级）",
+      "majorTitle": "选择专业",
+      "empty": "暂无可选项，请联系团委先创建年级/专业标签。"
+    },
     "center": {
       "subtitle": "基础信息先保存，统一提交后进入团委审核并留痕反馈",
       "overviewTitle": "我的档案总览",
@@ -380,8 +546,135 @@
         "submitGradeMajor": "提交年级/专业审核申请",
         "saveDraft": "保存基础信息草稿",
         "submitTag": "提交标签新增申请",
-        "submitAward": "提交奖项新增申请"
+        "submitAward": "提交奖项新增申请",
+        "requestDelete": "申请删除",
+        "approve": "通过",
+        "reject": "驳回",
+        "search": "查询",
+        "viewAndEdit": "查看并修改",
+        "saveAndSync": "保存修改并同步",
+        "select": "选择"
       }
+    }
+  },
+  "admin": {
+    "loadingAuth": "正在校验登录状态...",
+    "leagueOnly": "仅团委管理员可访问，当前角色：{role}",
+    "title": "团委后台",
+    "subtitle": "集中处理档案审核与活动申请审批。",
+    "status": {
+      "approved": "已通过",
+      "rejected": "已驳回",
+      "pending": "待审核"
+    },
+    "waiting": {
+      "unknown": "等待时长未知",
+      "hours": "已等待 {count} 小时",
+      "days": "已等待 {count} 天"
+    },
+    "timeline": {
+      "profileTitle": "档案审核 · {name}",
+      "profileApproved": "档案审核通过",
+      "profileRejected": "档案审核驳回",
+      "taskTitle": "任务审核 · {title}",
+      "taskApproved": "任务申请审核通过",
+      "taskRejected": "任务申请审核驳回"
+    },
+    "labels": {
+      "leagueAdmin": "团委管理员",
+      "unnamedTaskRequest": "未命名活动申请",
+      "unknownApplicant": "未知申请人",
+      "unassignedOrg": "未标注组织",
+      "unnamed": "未命名",
+      "reviewer": "审核人",
+      "time": "时间",
+      "note": "备注",
+      "notSelected": "未选择",
+      "title": "标题",
+      "org": "组织",
+      "submittedAt": "提交时间"
+    },
+    "reminder": {
+      "title": "待处理提醒",
+      "hasPending": "当前仍有待审核事项，建议优先处理最早提交的申请。",
+      "empty": "当前待审核事项已清空，可回顾审核记录。",
+      "pendingProfiles": "待审核档案 {count}",
+      "pendingTasks": "待审核活动 {count}"
+    },
+    "overview": {
+      "title": "审核总览",
+      "pendingProfiles": "待审核档案数",
+      "pendingTaskRequests": "待审核活动申请数",
+      "todayHandled": "今日已处理数量",
+      "recentRejected": "最近驳回数量（7天）"
+    },
+    "focus": {
+      "title": "今日优先处理",
+      "both": "优先处理：档案「{profile}」与活动「{task}」",
+      "profile": "优先处理：档案「{profile}」",
+      "task": "优先处理：活动「{task}」",
+      "empty": "当前没有待审核事项，可查看底部审核记录。"
+    },
+    "queue": {
+      "title": "待处理事项",
+      "profileTitle": "档案：{name}",
+      "topList": "优先待办清单（最多 5 条）",
+      "empty": "暂无待审核事项",
+      "urgent": "最紧急",
+      "applicant": "申请人",
+      "target": "审核对象",
+      "profileTarget": "学生档案",
+      "taskTarget": "社团活动申请",
+      "org": "申请组织",
+      "submittedAt": "提交时间"
+    },
+    "taskReview": {
+      "title": "活动申请审核（备注辅助）",
+      "selectPlaceholder": "请选择待审核活动申请",
+      "currentApplicant": "当前对象",
+      "rejectReasonPlaceholder": "活动申请驳回备注（可选）"
+    },
+    "records": {
+      "quickTitle": "最近审核记录（快速预览）",
+      "empty": "暂无审核记录",
+      "tab": "审核记录",
+      "timelineTab": "审核时间线",
+      "profileTitle": "档案审核记录",
+      "taskTitle": "任务审核记录",
+      "timelineTitle": "审核时间线（最新 16 条）",
+      "timelineEmpty": "暂无审核时间线数据"
+    },
+    "meta": {
+      "title": "年级与专业管理",
+      "grades": "年级",
+      "majors": "专业",
+      "gradePlaceholder": "新增年级（如 2025）",
+      "majorPlaceholder": "新增专业（如 计算机科学）",
+      "addGrade": "添加年级",
+      "addMajor": "添加专业",
+      "empty": "暂无"
+    },
+    "taskCenter": {
+      "title": "团委任务模块",
+      "subtitle": "进入任务中心，查看全局任务看板与审批流程。",
+      "enter": "进入任务中心"
+    },
+    "actions": {
+      "jumpPending": "跳到待处理事项",
+      "jumpTaskReview": "跳到活动审核",
+      "approve": "通过",
+      "reject": "驳回",
+      "detail": "详情",
+      "quickApprove": "一键通过",
+      "quickReject": "一键驳回"
+    },
+    "confirm": {
+      "approveProfile": "确认通过该档案审核吗？",
+      "rejectProfile": "确认驳回该档案审核吗？",
+      "approveTask": "确认通过该活动申请吗？",
+      "rejectTask": "确认驳回该活动申请吗？",
+      "addGrade": "确认新增该年级吗？",
+      "addMajor": "确认新增该专业吗？"
     }
   },
   "notifications": { "title": "通知中心", "markAll": "全部已读" }

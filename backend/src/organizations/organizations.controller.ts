@@ -47,6 +47,9 @@ class CreateOrgDto {
   @MinLength(1)
   typeRu!: string;
   @IsOptional()
+  @IsString()
+  logoUrl?: string;
+  @IsOptional()
   @IsUUID()
   leaderUserId?: string;
 }
@@ -102,6 +105,9 @@ class UpdateOrgDto {
   @IsString()
   @MinLength(1)
   typeRu!: string;
+  @IsOptional()
+  @IsString()
+  logoUrl?: string;
   @IsOptional()
   @IsUUID()
   leaderUserId?: string;

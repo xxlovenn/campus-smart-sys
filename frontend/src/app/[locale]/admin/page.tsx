@@ -68,10 +68,13 @@ function approvalBadgeClass(status?: string) {
   return 'badge badge-yellow';
 }
 
-function approvalLabel(status?: string) {
-  if (status === 'APPROVED') return '已通过';
-  if (status === 'REJECTED') return '已驳回';
-  return '待审核';
+function approvalLabel(
+  status: string | undefined,
+  labels: { approved: string; rejected: string; pending: string },
+) {
+  if (status === 'APPROVED') return labels.approved;
+  if (status === 'REJECTED') return labels.rejected;
+  return labels.pending;
 }
 
 function formatDateTime(value?: string | null) {
@@ -89,17 +92,21 @@ function timeToMs(value?: string | null) {
   return d.getTime();
 }
 
-function waitingLabel(value?: string | null) {
+function waitingLabel(
+  value: string | null | undefined,
+  labels: { unknown: string; hours: (v: number) => string; days: (v: number) => string },
+) {
   const ts = timeToMs(value);
-  if (!ts) return '等待时长未知';
+  if (!ts) return labels.unknown;
   const diff = Math.max(0, Date.now() - ts);
   const hours = Math.floor(diff / (60 * 60 * 1000));
-  if (hours < 24) return `已等待 ${hours} 小时`;
+  if (hours < 24) return labels.hours(hours);
   const days = Math.floor(hours / 24);
-  return `已等待 ${days} 天`;
+  return labels.days(days);
 }
 
 export default function AdminPage() {
+  const ta = useTranslations('admin');
   const tc = useTranslations('common');
   const { token, ready } = useAuthGuard();
   const [me, setMe] = useState<Me | null>(null);
@@ -114,16 +121,32 @@ export default function AdminPage() {
   const [activeTaskId, setActiveTaskId] = useState<string>('');
   const [reviewView, setReviewView] = useState<'records' | 'timeline'>('records');
   const [err, setErr] = useState<string | null>(null);
+  const approvalLabels = useMemo(
+    () => ({
+      approved: ta('status.approved'),
+      rejected: ta('status.rejected'),
+      pending: ta('status.pending'),
+    }),
+    [ta],
+  );
+  const waitingLabels = useMemo(
+    () => ({
+      unknown: ta('waiting.unknown'),
+      hours: (v: number) => ta('waiting.hours', { count: v }),
+      days: (v: number) => ta('waiting.days', { count: v }),
+    }),
+    [ta],
+  );
   const reviewTimeline = useMemo<ReviewTimelineItem[]>(() => {
     const profileRows: ReviewTimelineItem[] = profileRecords.map((row) => {
       const status = row.reviewStatus === 'APPROVED' ? 'APPROVED' : row.reviewStatus === 'REJECTED' ? 'REJECTED' : 'PENDING_APPROVAL';
       return {
         id: `profile-${row.userId}-${row.updatedAt ?? ''}`,
         type: 'profile',
-        title: `档案审核 · ${row.user.name}`,
+        title: ta('timeline.profileTitle', { name: row.user.name }),
         status,
-        note: row.rejectReason || (status === 'APPROVED' ? '档案审核通过' : '档案审核驳回'),
-        actor: row.reviewedBy?.name || row.reviewedBy?.email || '团委管理员',
+        note: row.rejectReason || (status === 'APPROVED' ? ta('timeline.profileApproved') : ta('timeline.profileRejected')),
+        actor: row.reviewedBy?.name || row.reviewedBy?.email || ta('labels.leagueAdmin'),
         at: row.reviewedAt ?? row.updatedAt,
         ts: row.reviewedAt
           ? new Date(row.reviewedAt).getTime()
@@ -137,10 +160,10 @@ export default function AdminPage() {
       return {
         id: `task-${row.id}-${row.approvedAt ?? row.updatedAt ?? row.createdAt ?? ''}`,
         type: 'task',
-        title: `任务审核 · ${row.titleZh || row.titleEn || row.titleRu || '—'}`,
+        title: ta('timeline.taskTitle', { title: row.titleZh || row.titleEn || row.titleRu || '—' }),
         status,
-        note: row.reviewNote || (status === 'APPROVED' ? '任务申请审核通过' : '任务申请审核驳回'),
-        actor: row.reviewedBy?.name || row.reviewedBy?.email || '团委管理员',
+        note: row.reviewNote || (status === 'APPROVED' ? ta('timeline.taskApproved') : ta('timeline.taskRejected')),
+        actor: row.reviewedBy?.name || row.reviewedBy?.email || ta('labels.leagueAdmin'),
         at: row.approvedAt ?? row.updatedAt ?? row.createdAt,
         ts: row.approvedAt
           ? new Date(row.approvedAt).getTime()
@@ -154,7 +177,7 @@ export default function AdminPage() {
     return [...taskRows, ...profileRows]
       .sort((a, b) => b.ts - a.ts)
       .slice(0, 16);
-  }, [profileRecords, taskReviewRecords]);
+  }, [profileRecords, ta, taskReviewRecords]);
   const latestPendingProfiles = useMemo(
     () =>
       [...pending]
@@ -191,11 +214,11 @@ export default function AdminPage() {
       return {
         key: `profile-${row.userId}`,
         kind: 'profile',
-        title: `档案：${row.user.name}`,
+        title: ta('queue.profileTitle', { name: row.user.name }),
         applicant: row.user.email,
         submittedAt: row.submittedAt ?? row.updatedAt,
         status: 'PENDING_APPROVAL',
-        waitText: waitingLabel(row.submittedAt ?? row.updatedAt),
+        waitText: waitingLabel(row.submittedAt ?? row.updatedAt, waitingLabels),
         // earlier submit time => higher priority
         priorityScore: submitTs > 0 ? Date.now() - submitTs : 0,
         profileId: row.userId,
@@ -203,16 +226,16 @@ export default function AdminPage() {
     });
     const taskItems: PendingQueueItem[] = latestPendingTasks.map((row) => {
       const submitTs = timeToMs(row.createdAt);
-      const title = row.titleZh || row.titleEn || row.titleRu || '未命名活动申请';
+      const title = row.titleZh || row.titleEn || row.titleRu || ta('labels.unnamedTaskRequest');
       return {
         key: `task-${row.id}`,
         kind: 'task',
         title,
-        applicant: row.creator?.name || row.creator?.email || '未知申请人',
-        org: row.primaryOrg?.nameZh || row.primaryOrg?.nameEn || row.primaryOrg?.nameRu || '未标注组织',
+        applicant: row.creator?.name || row.creator?.email || ta('labels.unknownApplicant'),
+        org: row.primaryOrg?.nameZh || row.primaryOrg?.nameEn || row.primaryOrg?.nameRu || ta('labels.unassignedOrg'),
         submittedAt: row.createdAt,
         status: row.approvalStatus ?? 'PENDING_APPROVAL',
-        waitText: waitingLabel(row.createdAt),
+        waitText: waitingLabel(row.createdAt, waitingLabels),
         priorityScore: submitTs > 0 ? Date.now() - submitTs : 0,
         taskId: row.id,
       };
@@ -220,7 +243,7 @@ export default function AdminPage() {
     return [...profileItems, ...taskItems]
       .sort((a, b) => b.priorityScore - a.priorityScore)
       .slice(0, 5);
-  }, [latestPendingProfiles, latestPendingTasks]);
+  }, [latestPendingProfiles, latestPendingTasks, ta, waitingLabels]);
   const quickReviewRecords = useMemo(
     () => reviewTimeline.slice(0, 8),
     [reviewTimeline],
@@ -263,12 +286,15 @@ export default function AdminPage() {
     const p = latestPendingProfiles[0];
     const t = latestPendingTasks[0];
     if (p && t) {
-      return `优先处理：档案「${p.user.name}」与活动「${t.titleZh || t.titleEn || t.titleRu || '未命名'}」`;
+      return ta('focus.both', {
+        profile: p.user.name,
+        task: t.titleZh || t.titleEn || t.titleRu || ta('labels.unnamed'),
+      });
     }
-    if (p) return `优先处理：档案「${p.user.name}」`;
-    if (t) return `优先处理：活动「${t.titleZh || t.titleEn || t.titleRu || '未命名'}」`;
-    return '当前没有待审核事项，可查看底部审核记录。';
-  }, [latestPendingProfiles, latestPendingTasks]);
+    if (p) return ta('focus.profile', { profile: p.user.name });
+    if (t) return ta('focus.task', { task: t.titleZh || t.titleEn || t.titleRu || ta('labels.unnamed') });
+    return ta('focus.empty');
+  }, [latestPendingProfiles, latestPendingTasks, ta]);
   const totalPendingCount = pending.length + taskRequests.length;
 
   const load = useCallback(async () => {
@@ -286,7 +312,7 @@ export default function AdminPage() {
       }
       const [pendingList, requests, options, profileReviewed, taskReviewed] = await Promise.all([
         apiFetch<PendingProfile[]>('/profile/admin/pending', { token }),
-        apiFetch<TaskRequest[]>('/tasks/admin/requests?stage=LEAGUE_REVIEW', { token }),
+        apiFetch<TaskRequest[]>('/tasks/admin/requests?stage=ALL', { token }),
         apiFetch<MetaOptions>('/profile/admin/options', { token }),
         apiFetch<ProfileReviewRecord[]>('/profile/admin/review-records?limit=12', { token }),
         apiFetch<TaskReviewRecord[]>('/tasks/admin/review-records?limit=12&source=ORG_REQUEST', { token }),
@@ -309,6 +335,14 @@ export default function AdminPage() {
   }, [load]);
 
   useEffect(() => {
+    if (!token) return;
+    const timer = setInterval(() => {
+      load();
+    }, 30000);
+    return () => clearInterval(timer);
+  }, [load, token]);
+
+  useEffect(() => {
     if (!activeTaskId && taskRequests.length > 0) {
       setActiveTaskId(latestPendingTasks[0]?.id ?? taskRequests[0].id);
     }
@@ -316,7 +350,7 @@ export default function AdminPage() {
 
   async function review(userId: string, approve: boolean) {
     if (!token) return;
-    if (!confirmAction(approve ? '确认通过该档案审核吗？' : '确认驳回该档案审核吗？')) return;
+    if (!confirmAction(approve ? ta('confirm.approveProfile') : ta('confirm.rejectProfile'))) return;
     await apiFetch(`/profile/admin/${userId}/review`, {
       method: 'PATCH',
       token,
@@ -327,7 +361,7 @@ export default function AdminPage() {
 
   async function reviewTaskRequest(taskId: string, approve: boolean) {
     if (!token) return;
-    if (!confirmAction(approve ? '确认通过该活动申请吗？' : '确认驳回该活动申请吗？')) return;
+    if (!confirmAction(approve ? ta('confirm.approveTask') : ta('confirm.rejectTask'))) return;
     try {
       await apiFetch(`/tasks/admin/requests/${taskId}/review`, {
         method: 'PATCH',
@@ -347,7 +381,7 @@ export default function AdminPage() {
 
   async function addGrade() {
     if (!token || !newGrade.trim()) return;
-    if (!confirmAction('确认新增该年级吗？')) return;
+    if (!confirmAction(ta('confirm.addGrade'))) return;
     try {
       await apiFetch('/profile/admin/options/grades', {
         method: 'POST',
@@ -363,7 +397,7 @@ export default function AdminPage() {
 
   async function addMajor() {
     if (!token || !newMajor.trim()) return;
-    if (!confirmAction('确认新增该专业吗？')) return;
+    if (!confirmAction(ta('confirm.addMajor'))) return;
     try {
       await apiFetch('/profile/admin/options/majors', {
         method: 'POST',
@@ -382,13 +416,13 @@ export default function AdminPage() {
   if (!ready || !token) {
     return (
       <div className="page-card">
-        <p className="page-subtitle">正在校验登录状态...</p>
+        <p className="page-subtitle">{ta('loadingAuth')}</p>
       </div>
     );
   }
 
   if (me && me.role !== 'LEAGUE_ADMIN') {
-    return <p>League admin only. Current role: {me.role}</p>;
+    return <p>{ta('leagueOnly', { role: me.role })}</p>;
   }
 
   return (
@@ -397,10 +431,10 @@ export default function AdminPage() {
         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, flexWrap: 'wrap' }}>
           <div>
             <h1 className="page-title" style={{ marginBottom: 4 }}>
-              团委后台
+              {ta('title')}
             </h1>
             <p className="page-subtitle" style={{ marginBottom: 0 }}>
-              集中处理档案审核与活动申请审批。
+              {ta('subtitle')}
             </p>
           </div>
           <button type="button" onClick={load}>
@@ -411,42 +445,42 @@ export default function AdminPage() {
 
         <section className="card-soft admin-reminder-card">
           <div>
-            <div className="admin-reminder-title">待处理提醒</div>
+            <div className="admin-reminder-title">{ta('reminder.title')}</div>
             <div className="admin-reminder-count">{totalPendingCount}</div>
             <p className="admin-reminder-text">
-              {totalPendingCount > 0 ? '当前仍有待审核事项，建议优先处理最早提交的申请。' : '当前待审核事项已清空，可回顾审核记录。'}
+              {totalPendingCount > 0 ? ta('reminder.hasPending') : ta('reminder.empty')}
             </p>
           </div>
           <div className="admin-reminder-pills">
-            <span className="badge badge-yellow">待审核档案 {pending.length}</span>
-            <span className="badge badge-red">待审核活动 {taskRequests.length}</span>
+            <span className="badge badge-yellow">{ta('reminder.pendingProfiles', { count: pending.length })}</span>
+            <span className="badge badge-red">{ta('reminder.pendingTasks', { count: taskRequests.length })}</span>
           </div>
         </section>
 
         <section className="card-soft">
-          <h3 style={{ marginBottom: 12 }}>审核总览</h3>
+          <h3 style={{ marginBottom: 12 }}>{ta('overview.title')}</h3>
           <div className="dashboard-stats-grid">
             <div className="dashboard-stat-card">
-              <div className="topbar-muted">待审核档案数</div>
+              <div className="topbar-muted">{ta('overview.pendingProfiles')}</div>
               <strong className="dashboard-stat-value">{pending.length}</strong>
             </div>
             <div className="dashboard-stat-card">
-              <div className="topbar-muted">待审核活动申请数</div>
+              <div className="topbar-muted">{ta('overview.pendingTaskRequests')}</div>
               <strong className="dashboard-stat-value">{taskRequests.length}</strong>
             </div>
             <div className="dashboard-stat-card">
-              <div className="topbar-muted">今日已处理数量</div>
+              <div className="topbar-muted">{ta('overview.todayHandled')}</div>
               <strong className="dashboard-stat-value">{todayHandledCount}</strong>
             </div>
             <div className="dashboard-stat-card">
-              <div className="topbar-muted">最近驳回数量（7天）</div>
+              <div className="topbar-muted">{ta('overview.recentRejected')}</div>
               <strong className="dashboard-stat-value">{recentRejectedCount}</strong>
             </div>
           </div>
         </section>
 
         <section className="card-soft">
-          <h3 style={{ marginBottom: 8 }}>今日优先处理</h3>
+          <h3 style={{ marginBottom: 8 }}>{ta('focus.title')}</h3>
           <p className="topbar-muted" style={{ marginTop: 0, marginBottom: 10 }}>
             {focusHint}
           </p>
@@ -458,25 +492,25 @@ export default function AdminPage() {
                 document.getElementById('pending-review-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
               }}
             >
-              跳到待处理事项
+              {ta('actions.jumpPending')}
             </button>
             <button
               type="button"
               disabled={latestPendingTasks.length === 0}
               onClick={() => latestPendingTasks[0] && setActiveTaskId(latestPendingTasks[0].id)}
             >
-              跳到活动审核
+              {ta('actions.jumpTaskReview')}
             </button>
           </div>
         </section>
 
         <section id="pending-review-section" className="card-soft" style={{ display: 'grid', gap: 12 }}>
-          <h3 style={{ margin: 0 }}>待处理事项</h3>
+          <h3 style={{ margin: 0 }}>{ta('queue.title')}</h3>
           <div className="grid-two">
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-              <strong>优先待办清单（最多 5 条）</strong>
+              <strong>{ta('queue.topList')}</strong>
               {pendingQueue.length === 0 ? (
-                <p className="topbar-muted" style={{ margin: 0 }}>暂无待审核事项</p>
+                <p className="topbar-muted" style={{ margin: 0 }}>{ta('queue.empty')}</p>
               ) : (
                 <ul className="list-clean">
                   {pendingQueue.map((row, idx) => (
@@ -488,28 +522,28 @@ export default function AdminPage() {
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                           <strong>{row.title}</strong>
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                            {idx === 0 ? <span className="badge badge-red">最紧急</span> : null}
-                            <span className={approvalBadgeClass(row.status)}>{approvalLabel(row.status)}</span>
+                            {idx === 0 ? <span className="badge badge-red">{ta('queue.urgent')}</span> : null}
+                            <span className={approvalBadgeClass(row.status)}>{approvalLabel(row.status, approvalLabels)}</span>
                           </div>
                         </div>
-                        <div className="topbar-muted admin-todo-meta">申请人：{row.applicant}</div>
+                        <div className="topbar-muted admin-todo-meta">{ta('queue.applicant')}: {row.applicant}</div>
                         <div className="topbar-muted admin-todo-meta">
-                          审核对象：{row.kind === 'profile' ? '学生档案' : '社团活动申请'}
+                          {ta('queue.target')}：{row.kind === 'profile' ? ta('queue.profileTarget') : ta('queue.taskTarget')}
                         </div>
-                        {row.org ? <div className="topbar-muted admin-todo-meta">申请组织：{row.org}</div> : null}
-                        <div className="topbar-muted admin-todo-meta">提交时间：{formatDateTime(row.submittedAt)}</div>
+                        {row.org ? <div className="topbar-muted admin-todo-meta">{ta('queue.org')}: {row.org}</div> : null}
+                        <div className="topbar-muted admin-todo-meta">{ta('queue.submittedAt')}: {formatDateTime(row.submittedAt)}</div>
                         <div className="admin-todo-wait">{row.waitText}</div>
                         <div className="admin-todo-actions">
                           {row.kind === 'profile' ? (
                             <>
-                              <button type="button" onClick={() => row.profileId && review(row.profileId, true)}>通过</button>
-                              <button type="button" className="logout-btn" onClick={() => row.profileId && review(row.profileId, false)}>驳回</button>
+                              <button type="button" onClick={() => row.profileId && review(row.profileId, true)}>{ta('actions.approve')}</button>
+                              <button type="button" className="logout-btn" onClick={() => row.profileId && review(row.profileId, false)}>{ta('actions.reject')}</button>
                             </>
                           ) : (
                             <>
-                              <button type="button" onClick={() => row.taskId && reviewTaskRequest(row.taskId, true)}>通过</button>
-                              <button type="button" className="logout-btn" onClick={() => row.taskId && reviewTaskRequest(row.taskId, false)}>驳回</button>
-                              <button type="button" onClick={() => row.taskId && setActiveTaskId(row.taskId)}>详情</button>
+                              <button type="button" onClick={() => row.taskId && reviewTaskRequest(row.taskId, true)}>{ta('actions.approve')}</button>
+                              <button type="button" className="logout-btn" onClick={() => row.taskId && reviewTaskRequest(row.taskId, false)}>{ta('actions.reject')}</button>
+                              <button type="button" onClick={() => row.taskId && setActiveTaskId(row.taskId)}>{ta('actions.detail')}</button>
                             </>
                           )}
                         </div>
@@ -521,9 +555,9 @@ export default function AdminPage() {
             </div>
 
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-              <strong>最近审核记录（快速预览）</strong>
+              <strong>{ta('records.quickTitle')}</strong>
               {quickReviewRecords.length === 0 ? (
-                <p className="topbar-muted" style={{ margin: 0 }}>暂无审核记录</p>
+                <p className="topbar-muted" style={{ margin: 0 }}>{ta('records.empty')}</p>
               ) : (
                 <ul className="list-clean">
                   {quickReviewRecords.map((row) => (
@@ -531,10 +565,10 @@ export default function AdminPage() {
                       <div style={{ display: 'grid', gap: 6 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                           <strong>{row.title}</strong>
-                          <span className={approvalBadgeClass(row.status)}>{approvalLabel(row.status)}</span>
+                          <span className={approvalBadgeClass(row.status)}>{approvalLabel(row.status, approvalLabels)}</span>
                         </div>
-                        <div className="topbar-muted admin-todo-meta">审核人：{row.actor}</div>
-                        <div className="topbar-muted admin-todo-meta">时间：{formatDateTime(row.at)}</div>
+                        <div className="topbar-muted admin-todo-meta">{ta('labels.reviewer')}: {row.actor}</div>
+                        <div className="topbar-muted admin-todo-meta">{ta('labels.time')}: {formatDateTime(row.at)}</div>
                       </div>
                     </li>
                   ))}
@@ -545,10 +579,10 @@ export default function AdminPage() {
         </section>
 
         <section className="card-soft" style={{ display: 'grid', gap: 12 }}>
-          <h3 style={{ margin: 0 }}>活动申请审核（备注辅助）</h3>
+          <h3 style={{ margin: 0 }}>{ta('taskReview.title')}</h3>
           <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
             <select value={activeTaskId} onChange={(e) => setActiveTaskId(e.target.value)}>
-              <option value="">请选择待审核活动申请</option>
+              <option value="">{ta('taskReview.selectPlaceholder')}</option>
               {taskRequests.map((row) => (
                 <option key={row.id} value={row.id}>
                   {row.titleZh || row.titleEn || row.titleRu || '—'}
@@ -556,21 +590,21 @@ export default function AdminPage() {
               ))}
             </select>
             <div className="topbar-muted">
-              当前对象：{activeTask ? `${activeTask.creator?.name || activeTask.creator?.email || '—'}` : '未选择'}
+              {ta('taskReview.currentApplicant')}：{activeTask ? `${activeTask.creator?.name || activeTask.creator?.email || '—'}` : ta('labels.notSelected')}
             </div>
             {activeTask ? (
               <>
                 <div className="topbar-muted">
-                  标题：{activeTask.titleZh || activeTask.titleEn || activeTask.titleRu || '—'}
+                  {ta('labels.title')}：{activeTask.titleZh || activeTask.titleEn || activeTask.titleRu || '—'}
                 </div>
                 <div className="topbar-muted">
-                  组织：{activeTask.primaryOrg?.nameZh || activeTask.primaryOrg?.nameEn || activeTask.primaryOrg?.nameRu || '—'} ·
-                  提交时间：{formatDateTime(activeTask.createdAt)}
+                  {ta('labels.org')}：{activeTask.primaryOrg?.nameZh || activeTask.primaryOrg?.nameEn || activeTask.primaryOrg?.nameRu || '—'} ·
+                  {ta('labels.submittedAt')}：{formatDateTime(activeTask.createdAt)}
                 </div>
               </>
             ) : null}
             <textarea
-              placeholder="活动申请驳回备注（可选）"
+              placeholder={ta('taskReview.rejectReasonPlaceholder')}
               value={activeTaskId ? (taskRejectReason[activeTaskId] ?? '') : ''}
               onChange={(e) =>
                 activeTaskId
@@ -581,7 +615,7 @@ export default function AdminPage() {
             />
             <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
               <button type="button" disabled={!activeTaskId} onClick={() => activeTaskId && reviewTaskRequest(activeTaskId, true)}>
-                一键通过
+                {ta('actions.quickApprove')}
               </button>
               <button
                 type="button"
@@ -589,7 +623,7 @@ export default function AdminPage() {
                 disabled={!activeTaskId}
                 onClick={() => activeTaskId && reviewTaskRequest(activeTaskId, false)}
               >
-                一键驳回
+                {ta('actions.quickReject')}
               </button>
             </div>
           </div>
@@ -602,21 +636,21 @@ export default function AdminPage() {
               className={`dashboard-chip ${reviewView === 'records' ? 'dashboard-chip-active' : ''}`}
               onClick={() => setReviewView('records')}
             >
-              审核记录
+              {ta('records.tab')}
             </button>
             <button
               type="button"
               className={`dashboard-chip ${reviewView === 'timeline' ? 'dashboard-chip-active' : ''}`}
               onClick={() => setReviewView('timeline')}
             >
-              审核时间线
+              {ta('records.timelineTab')}
             </button>
           </div>
 
           {reviewView === 'records' ? (
             <div className="grid-two">
               <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-                <strong>档案审核记录</strong>
+                <strong>{ta('records.profileTitle')}</strong>
                 <ul className="list-clean">
                   {profileRecords.map((row) => (
                     <li key={row.userId} className="list-item">
@@ -625,10 +659,10 @@ export default function AdminPage() {
                           <span>
                             {row.user.name} · {row.user.studentId ?? '—'}
                           </span>
-                          <span className={approvalBadgeClass(row.reviewStatus)}>{approvalLabel(row.reviewStatus)}</span>
+                          <span className={approvalBadgeClass(row.reviewStatus)}>{approvalLabel(row.reviewStatus, approvalLabels)}</span>
                         </div>
-                        <div className="topbar-muted">时间：{formatDateTime(row.updatedAt)}</div>
-                        {row.rejectReason ? <div className="topbar-muted">备注：{row.rejectReason}</div> : null}
+                        <div className="topbar-muted">{ta('labels.time')}：{formatDateTime(row.updatedAt)}</div>
+                        {row.rejectReason ? <div className="topbar-muted">{ta('labels.note')}：{row.rejectReason}</div> : null}
                       </div>
                     </li>
                   ))}
@@ -636,20 +670,20 @@ export default function AdminPage() {
               </div>
 
               <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-                <strong>任务审核记录</strong>
+                <strong>{ta('records.taskTitle')}</strong>
                 <ul className="list-clean">
                   {taskReviewRecords.map((row) => (
                     <li key={row.id} className="list-item">
                       <div style={{ display: 'grid', gap: 6 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                           <span>{row.titleZh || row.titleEn || row.titleRu || '—'}</span>
-                          <span className={approvalBadgeClass(row.approvalStatus)}>{approvalLabel(row.approvalStatus)}</span>
+                          <span className={approvalBadgeClass(row.approvalStatus)}>{approvalLabel(row.approvalStatus, approvalLabels)}</span>
                         </div>
                         <div className="topbar-muted">
-                          审核人：{row.reviewedBy?.name || row.reviewedBy?.email || '—'} · 时间：
+                          {ta('labels.reviewer')}：{row.reviewedBy?.name || row.reviewedBy?.email || '—'} · {ta('labels.time')}：
                           {formatDateTime(row.approvedAt ?? row.updatedAt ?? row.createdAt)}
                         </div>
-                        {row.reviewNote ? <div className="topbar-muted">备注：{row.reviewNote}</div> : null}
+                        {row.reviewNote ? <div className="topbar-muted">{ta('labels.note')}：{row.reviewNote}</div> : null}
                       </div>
                     </li>
                   ))}
@@ -658,10 +692,10 @@ export default function AdminPage() {
             </div>
           ) : (
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-              <strong>审核时间线（最新 16 条）</strong>
+              <strong>{ta('records.timelineTitle')}</strong>
               {reviewTimeline.length === 0 ? (
                 <p className="topbar-muted" style={{ margin: 0 }}>
-                  暂无审核时间线数据
+                  {ta('records.timelineEmpty')}
                 </p>
               ) : (
                 <ul className="audit-timeline">
@@ -679,10 +713,10 @@ export default function AdminPage() {
                       <div className="audit-timeline-main">
                         <div className="audit-timeline-head">
                           <strong>{row.title}</strong>
-                          <span className={approvalBadgeClass(row.status)}>{approvalLabel(row.status)}</span>
+                          <span className={approvalBadgeClass(row.status)}>{approvalLabel(row.status, approvalLabels)}</span>
                         </div>
-                        <div className="topbar-muted">审核人：{row.actor}</div>
-                        <div className="topbar-muted">备注：{row.note}</div>
+                        <div className="topbar-muted">{ta('labels.reviewer')}：{row.actor}</div>
+                        <div className="topbar-muted">{ta('labels.note')}：{row.note}</div>
                         <div className="topbar-muted">{formatDateTime(row.at)}</div>
                       </div>
                     </li>
@@ -694,31 +728,31 @@ export default function AdminPage() {
         </section>
 
         <section className="card-soft" style={{ display: 'grid', gap: 12 }}>
-          <h3 style={{ margin: 0 }}>年级与专业管理</h3>
+          <h3 style={{ margin: 0 }}>{ta('meta.title')}</h3>
           <div className="grid-two">
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-              <strong>年级</strong>
+              <strong>{ta('meta.grades')}</strong>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input value={newGrade} onChange={(e) => setNewGrade(e.target.value)} placeholder="新增年级（如 2025）" />
-                <button type="button" onClick={addGrade}>添加年级</button>
+                <input value={newGrade} onChange={(e) => setNewGrade(e.target.value)} placeholder={ta('meta.gradePlaceholder')} />
+                <button type="button" onClick={addGrade}>{ta('meta.addGrade')}</button>
               </div>
-              <div className="topbar-muted">{meta.grades.map((g) => g.name).join('、') || '暂无'}</div>
+              <div className="topbar-muted">{meta.grades.map((g) => g.name).join('、') || ta('meta.empty')}</div>
             </div>
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-              <strong>专业</strong>
+              <strong>{ta('meta.majors')}</strong>
               <div style={{ display: 'flex', gap: 8 }}>
-                <input value={newMajor} onChange={(e) => setNewMajor(e.target.value)} placeholder="新增专业（如 计算机科学）" />
-                <button type="button" onClick={addMajor}>添加专业</button>
+                <input value={newMajor} onChange={(e) => setNewMajor(e.target.value)} placeholder={ta('meta.majorPlaceholder')} />
+                <button type="button" onClick={addMajor}>{ta('meta.addMajor')}</button>
               </div>
-              <div className="topbar-muted">{meta.majors.map((m) => m.name).join('、') || '暂无'}</div>
+              <div className="topbar-muted">{meta.majors.map((m) => m.name).join('、') || ta('meta.empty')}</div>
             </div>
           </div>
         </section>
 
         <section className="card-soft" style={{ display: 'grid', gap: 8 }}>
-          <h3 style={{ margin: 0 }}>团委任务模块</h3>
+          <h3 style={{ margin: 0 }}>{ta('taskCenter.title')}</h3>
           <p className="topbar-muted" style={{ margin: 0 }}>
-            进入任务中心，查看全局任务看板与审批流程。
+            {ta('taskCenter.subtitle')}
           </p>
           <Link
             href="/tasks"
@@ -733,7 +767,7 @@ export default function AdminPage() {
               textDecoration: 'none',
             }}
           >
-            进入任务中心
+            {ta('taskCenter.enter')}
           </Link>
         </section>
       </div>

@@ -16,7 +16,7 @@
     "prisma:seed": "node prisma/seed.js",
     "db:init": "npm run prisma:migrate && npm run prisma:seed",
     "db:reseed": "npm run prisma:seed",
-    "start:container": "npm run prisma:migrate && npm run start:prod",
+    "start:container": "npm run prisma:migrate && npm run prisma:seed && npm run start:prod",
     "verify:permissions": "ts-node scripts/verify-permission-matrix.ts"
   },
   "dependencies": {

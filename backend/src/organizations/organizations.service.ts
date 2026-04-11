@@ -165,6 +165,7 @@ export class OrganizationsService {
     typeZh: string;
     typeEn: string;
     typeRu: string;
+    logoUrl?: string;
     leaderUserId?: string;
   }) {
     const account = await this.generateUniqueOrgAccount();
@@ -191,6 +192,7 @@ export class OrganizationsService {
         adminUserId: adminUser.id,
         adminAccount: account,
         adminPassword: password,
+        logoUrl: data.logoUrl?.trim() || '',
       },
       include: {
         leader: { select: { id: true, name: true, email: true, studentId: true } },
@@ -291,6 +293,7 @@ export class OrganizationsService {
       typeZh: string;
       typeEn: string;
       typeRu: string;
+      logoUrl?: string;
       leaderUserId?: string;
     },
     userId: string,
@@ -312,6 +315,7 @@ export class OrganizationsService {
         typeZh: data.typeZh,
         typeEn: data.typeEn,
         typeRu: data.typeRu,
+        logoUrl: data.logoUrl?.trim() || '',
         leaderUserId: data.leaderUserId || null,
       },
     });

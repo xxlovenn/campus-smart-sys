@@ -167,6 +167,44 @@
       },
       "upcomingHint": "未来 {hours} 小时内有 {count} 个任务即将截止。"
     },
+    "leagueBoard": {
+      "title": "团委全局管理看板",
+      "hint": "面向全校任务治理与审核流转的首屏概览。",
+      "cards": {
+        "totalTasks": "全校任务总数",
+        "approved": "审核通过",
+        "pending": "待审核",
+        "rejected": "已驳回"
+      },
+      "orgList": {
+        "title": "各组织任务数量",
+        "hint": "按组织聚合的任务数量排名",
+        "empty": "暂无组织任务数据"
+      },
+      "recent": {
+        "title": "最近新增任务",
+        "hint": "按创建时间倒序展示最新任务",
+        "empty": "暂无新增任务"
+      },
+      "filters": {
+        "all": "全部",
+        "pending": "待处理",
+        "inProgress": "进行中",
+        "done": "已完成"
+      },
+      "pendingReview": {
+        "title": "待审核任务清单",
+        "hint": "按截止时间升序，优先处理临期任务",
+        "empty": "当前没有待审核任务",
+        "badge": "待审核"
+      },
+      "status": {
+        "todo": "待处理",
+        "inProgress": "进行中",
+        "done": "已完成",
+        "blocked": "受阻"
+      }
+    },
     "quickPrimary": "核心入口",
     "quickExtraHint": "其余入口已保留在下方，便于完整演示。",
     "roleSummary": {

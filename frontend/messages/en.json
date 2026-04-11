@@ -170,6 +170,44 @@
       },
       "upcomingHint": "{count} tasks are due in the next {hours} hours."
     },
+    "leagueBoard": {
+      "title": "League Global Control Board",
+      "hint": "First-screen overview for campus-wide task governance and approval flow.",
+      "cards": {
+        "totalTasks": "Total campus tasks",
+        "approved": "Approved",
+        "pending": "Pending approval",
+        "rejected": "Rejected"
+      },
+      "orgList": {
+        "title": "Tasks by organization",
+        "hint": "Task volume ranking aggregated by organization",
+        "empty": "No organization task data"
+      },
+      "recent": {
+        "title": "Recently added tasks",
+        "hint": "Newest tasks sorted by created time",
+        "empty": "No recent tasks"
+      },
+      "filters": {
+        "all": "All",
+        "pending": "Pending",
+        "inProgress": "In progress",
+        "done": "Done"
+      },
+      "pendingReview": {
+        "title": "Pending review queue",
+        "hint": "Sorted by due time to surface urgent approvals first",
+        "empty": "No pending review tasks right now",
+        "badge": "Pending review"
+      },
+      "status": {
+        "todo": "To-do",
+        "inProgress": "In progress",
+        "done": "Done",
+        "blocked": "Blocked"
+      }
+    },
     "quickPrimary": "Primary entry",
     "quickExtraHint": "Additional entries remain below for full showcase coverage.",
     "roleSummary": {

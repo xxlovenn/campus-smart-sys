@@ -20,8 +20,16 @@ type OverviewStatusRow = {
   _count?: { _all?: number };
 };
 type TaskOverviewTask = {
+  id?: string;
+  titleZh?: string;
+  titleEn?: string;
+  titleRu?: string;
   status?: string;
   approvalStatus?: string;
+  createdAt?: string | null;
+  startAt?: string | null;
+  endAt?: string | null;
+  dueAt?: string | null;
   primaryOrgId?: string | null;
   primaryOrg?: Record<string, unknown> | null;
 };
@@ -39,6 +47,7 @@ type DashboardTaskRow = {
   startAt?: string | null;
   endAt?: string | null;
   dueAt?: string | null;
+  createdAt?: string | null;
   primaryOrgId?: string | null;
   relatedOrgs?: Array<{ organizationId?: string }>;
 };
@@ -115,7 +124,9 @@ type StudentDeadlineRow = {
 type QuickKey = 'timeline' | 'tasks' | 'organizations' | 'profile' | 'notifications' | 'admin';
 type SidebarRole = 'student' | 'orgAdmin' | 'leagueAdmin';
 type OrgDeadlineWindow = 24 | 48 | 72;
+type LeagueRecentFilter = 'ALL' | 'PENDING' | 'IN_PROGRESS' | 'DONE';
 const ORG_DEADLINE_WINDOWS: OrgDeadlineWindow[] = [24, 48, 72];
+const LEAGUE_RECENT_FILTERS: LeagueRecentFilter[] = ['ALL', 'PENDING', 'IN_PROGRESS', 'DONE'];
 
 const ROLE_ORDER: Record<string, QuickKey[]> = {
   STUDENT: ['tasks', 'timeline', 'profile', 'organizations', 'notifications'],
@@ -254,6 +265,7 @@ export default function DashboardPage() {
   const [upcomingReminders, setUpcomingReminders] = useState<UpcomingReminders | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
   const [orgDeadlineWindow, setOrgDeadlineWindow] = useState<OrgDeadlineWindow>(72);
+  const [leagueRecentFilter, setLeagueRecentFilter] = useState<LeagueRecentFilter>('ALL');
   const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
@@ -492,6 +504,51 @@ export default function DashboardPage() {
       .sort((a, b) => b.count - a.count)
       .slice(0, 6);
   }, [isLeagueAdmin, locale, overviewTasks, t]);
+  const leagueRecentTasks = useMemo(() => {
+    if (!isLeagueAdmin) return [];
+    const rows = tasks
+      .map((row) => {
+        const sortDate =
+          parseDateValue(row.createdAt ?? null) ??
+          parseDateValue(row.startAt ?? null) ??
+          parseDateValue(row.endAt ?? row.dueAt ?? null);
+        return {
+          id: row.id,
+          title: triField(row as unknown as Record<string, unknown>, 'title', locale) || t('quickEntry'),
+          status: row.status ?? 'TODO',
+          createdAt: row.createdAt ?? null,
+          sortTime: sortDate?.getTime() ?? 0,
+        };
+      })
+      .sort((a, b) => b.sortTime - a.sortTime);
+    return rows.slice(0, 6);
+  }, [isLeagueAdmin, locale, tasks, t]);
+  const leaguePendingReviewTasks = useMemo(() => {
+    if (!isLeagueAdmin) return [];
+    return tasks
+      .filter((row) => row.approvalStatus === 'PENDING_APPROVAL')
+      .map((row) => ({
+        id: row.id,
+        title: triField(row as unknown as Record<string, unknown>, 'title', locale) || t('quickEntry'),
+        dueAt: row.endAt ?? row.dueAt ?? row.startAt ?? null,
+      }))
+      .sort((a, b) => {
+        const da = parseDateValue(a.dueAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const db = parseDateValue(b.dueAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return da - db;
+      })
+      .slice(0, 5);
+  }, [isLeagueAdmin, locale, tasks, t]);
+  const filteredLeagueRecentTasks = useMemo(() => {
+    if (leagueRecentFilter === 'ALL') return leagueRecentTasks;
+    if (leagueRecentFilter === 'PENDING') {
+      return leagueRecentTasks.filter((row) => row.status === 'TODO' || row.status === 'BLOCKED');
+    }
+    if (leagueRecentFilter === 'IN_PROGRESS') {
+      return leagueRecentTasks.filter((row) => row.status === 'IN_PROGRESS');
+    }
+    return leagueRecentTasks.filter((row) => row.status === 'DONE');
+  }, [leagueRecentFilter, leagueRecentTasks]);
   const todayCourses = useMemo(() => {
     if (!isStudent) return [];
     const weekday = new Date().getDay() || 7;
@@ -643,6 +700,18 @@ export default function DashboardPage() {
       default:
         return t('studentHome.recommendations.reasons.default');
     }
+  };
+  const leagueStatusLabel = (status?: string) => {
+    if (status === 'DONE') return t('leagueBoard.status.done');
+    if (status === 'IN_PROGRESS') return t('leagueBoard.status.inProgress');
+    if (status === 'BLOCKED') return t('leagueBoard.status.blocked');
+    return t('leagueBoard.status.todo');
+  };
+  const leagueRecentFilterLabel = (filter: LeagueRecentFilter) => {
+    if (filter === 'PENDING') return t('leagueBoard.filters.pending');
+    if (filter === 'IN_PROGRESS') return t('leagueBoard.filters.inProgress');
+    if (filter === 'DONE') return t('leagueBoard.filters.done');
+    return t('leagueBoard.filters.all');
   };
   const orgWindowLabel = (hours: OrgDeadlineWindow) => {
     if (hours === 24) return t('orgModule.windows.h24');
@@ -872,6 +941,110 @@ export default function DashboardPage() {
         )}
         {studentDataErr && isStudent ? (
           <p className="dashboard-state-note">{t('studentHome.partialLoad')}: {studentDataErr}</p>
+        ) : null}
+        {isLeagueAdmin ? (
+          <div className="dashboard-league-board">
+            <div className="dashboard-section-header">
+              <div>
+                <h2 style={{ marginBottom: 4 }}>{t('leagueBoard.title')}</h2>
+                <p className="topbar-muted" style={{ margin: 0 }}>
+                  {t('leagueBoard.hint')}
+                </p>
+              </div>
+            </div>
+
+            <div className="dashboard-stats-grid">
+              <div className="dashboard-stat-card">
+                <div className="topbar-muted">{t('leagueBoard.cards.totalTasks')}</div>
+                <strong className="dashboard-stat-value">{metrics.total}</strong>
+              </div>
+              <div className="dashboard-stat-card">
+                <div className="topbar-muted">{t('leagueBoard.cards.approved')}</div>
+                <strong className="dashboard-stat-value">{metrics.approved}</strong>
+              </div>
+              <div className="dashboard-stat-card">
+                <div className="topbar-muted">{t('leagueBoard.cards.pending')}</div>
+                <strong className="dashboard-stat-value">{metrics.pendingApproval}</strong>
+              </div>
+              <div className="dashboard-stat-card">
+                <div className="topbar-muted">{t('leagueBoard.cards.rejected')}</div>
+                <strong className="dashboard-stat-value">{metrics.rejected}</strong>
+              </div>
+            </div>
+
+            <div className="dashboard-league-grid">
+              <div className="dashboard-league-card">
+                <h3 className="dashboard-viz-title">{t('leagueBoard.orgList.title')}</h3>
+                <p className="topbar-muted dashboard-viz-subtitle">{t('leagueBoard.orgList.hint')}</p>
+                {orgTaskRanking.length === 0 ? (
+                  <p className="topbar-muted">{t('leagueBoard.orgList.empty')}</p>
+                ) : (
+                  <ul className="dashboard-simple-list">
+                    {orgTaskRanking.map((row) => (
+                      <li key={row.name} className="dashboard-simple-item">
+                        <span>{row.name}</span>
+                        <strong>{row.count}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="dashboard-league-card">
+                <h3 className="dashboard-viz-title">{t('leagueBoard.recent.title')}</h3>
+                <p className="topbar-muted dashboard-viz-subtitle">{t('leagueBoard.recent.hint')}</p>
+                <div className="dashboard-chip-group" style={{ marginBottom: 8 }}>
+                  {LEAGUE_RECENT_FILTERS.map((key) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setLeagueRecentFilter(key)}
+                      className={`dashboard-chip ${leagueRecentFilter === key ? 'dashboard-chip-active' : ''}`}
+                    >
+                      {leagueRecentFilterLabel(key)}
+                    </button>
+                  ))}
+                </div>
+                {filteredLeagueRecentTasks.length === 0 ? (
+                  <p className="topbar-muted">{t('leagueBoard.recent.empty')}</p>
+                ) : (
+                  <ul className="dashboard-simple-list">
+                    {filteredLeagueRecentTasks.map((row) => (
+                      <li key={row.id} className="dashboard-simple-item">
+                        <div>
+                          <div>{row.title}</div>
+                          <div className="topbar-muted" style={{ fontSize: 12 }}>
+                            {formatDateTimeShort(row.createdAt)}
+                          </div>
+                        </div>
+                        <strong>{leagueStatusLabel(row.status)}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+              <div className="dashboard-league-card">
+                <h3 className="dashboard-viz-title">{t('leagueBoard.pendingReview.title')}</h3>
+                <p className="topbar-muted dashboard-viz-subtitle">{t('leagueBoard.pendingReview.hint')}</p>
+                {leaguePendingReviewTasks.length === 0 ? (
+                  <p className="topbar-muted">{t('leagueBoard.pendingReview.empty')}</p>
+                ) : (
+                  <ul className="dashboard-simple-list">
+                    {leaguePendingReviewTasks.map((row) => (
+                      <li key={row.id} className="dashboard-simple-item">
+                        <div>
+                          <div>{row.title}</div>
+                          <div className="topbar-muted" style={{ fontSize: 12 }}>
+                            {t('common.due')}: {formatDateTimeShort(row.dueAt)}
+                          </div>
+                        </div>
+                        <strong>{t('leagueBoard.pendingReview.badge')}</strong>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            </div>
+          </div>
         ) : null}
         {isStudent ? (
           <div className="dashboard-student-grid">

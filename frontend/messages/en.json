@@ -102,6 +102,73 @@
       "profile": "Basic info, awards, and skill tags",
       "notifications": "System notices and reminders",
       "admin": "Pending reviews and league tools"
+    },
+    "hero": {
+      "tagline": "Your campus smart assistant now highlights the most important routes and metrics for your role."
+    },
+    "capabilities": {
+      "multilingual": {
+        "title": "Trilingual experience",
+        "desc": "Switch between Chinese, English, and Russian for competition demos."
+      },
+      "studentTime": {
+        "title": "Student task and time management",
+        "desc": "Track plans, tasks, and reminders in one focused workspace."
+      },
+      "orgFlow": {
+        "title": "Organization workflow",
+        "desc": "Cover activity initiation, co-organization review, and member sync."
+      },
+      "leagueGovernance": {
+        "title": "League review and global control",
+        "desc": "Handle approvals, organization governance, and global task oversight."
+      }
+    },
+    "summary": {
+      "title": "Role summary",
+      "student": "Focus on personal tasks, schedule planning, and profile improvements.",
+      "orgAdmin": "Focus on organization activities, collaboration review, and member execution.",
+      "leagueAdmin": "Focus on global review, organization governance, and system-wide operations."
+    },
+    "stats": {
+      "title": "Key metrics",
+      "hint": "Critical indicators are shown based on your current role.",
+      "student": {
+        "todo": "To-do tasks",
+        "inProgress": "In progress",
+        "done": "Completed",
+        "total": "Total tasks"
+      },
+      "org": {
+        "arranged": "Arranged activities",
+        "reviewing": "Under review",
+        "rejected": "Rejected requests",
+        "total": "Total activities"
+      },
+      "league": {
+        "pendingApproval": "Pending approvals",
+        "approved": "Approved",
+        "rejected": "Rejected",
+        "total": "Global tasks"
+      }
+    },
+    "quickPrimary": "Primary entry",
+    "quickExtraHint": "Additional entries remain below for full showcase coverage.",
+    "roleSummary": {
+      "student": "Student-side priority: execute tasks, manage time, and maintain growth profile.",
+      "orgAdmin": "Org-side priority: drive activities, coordinate approvals, and align members.",
+      "leagueAdmin": "League-side priority: govern reviews, monitor global board, and manage organizations."
+    },
+    "states": {
+      "authChecking": "Checking your session...",
+      "loadingData": "Loading homepage metrics...",
+      "errorTitle": "Failed to load dashboard",
+      "retry": "Retry",
+      "partialData": "Some data failed to load",
+      "partialOverview": "Global board is temporarily unavailable. Please try again later.",
+      "emptyTitle": "No tasks to display yet",
+      "emptyDesc": "Go to task center to create or review task data first.",
+      "emptyAction": "Open task center"
     }
   },
   "timeline": {

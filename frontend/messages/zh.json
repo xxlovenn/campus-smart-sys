@@ -99,6 +99,73 @@
       "profile": "基础信息、奖项荣誉与能力标签",
       "notifications": "系统通知与待办提醒",
       "admin": "待审核档案与团委工具"
+    },
+    "hero": {
+      "tagline": "校园智慧助手已为你按角色准备好最常用的流程入口与关键看板。"
+    },
+    "capabilities": {
+      "multilingual": {
+        "title": "三语展示能力",
+        "desc": "支持中/英/俄快速切换，适配国际化竞赛答辩场景。"
+      },
+      "studentTime": {
+        "title": "学生任务与时间管理",
+        "desc": "聚合个人计划、任务进度与通知提醒，降低时间管理成本。"
+      },
+      "orgFlow": {
+        "title": "组织任务流转",
+        "desc": "覆盖社团发起、协办审核到成员同步的完整活动流。"
+      },
+      "leagueGovernance": {
+        "title": "团委审核与全局管理",
+        "desc": "团委端集中处理审核、组织管理与全局任务看板。"
+      }
+    },
+    "summary": {
+      "title": "角色摘要",
+      "student": "你可优先处理个人任务、日程与档案完善，快速进入学生端常用能力。",
+      "orgAdmin": "你可管理本组织活动任务、成员协同与组织信息维护流程。",
+      "leagueAdmin": "你可执行全局审核、组织管理与任务治理，掌控整体运行状态。"
+    },
+    "stats": {
+      "title": "关键统计",
+      "hint": "基于当前角色展示最关键的实时指标。",
+      "student": {
+        "todo": "待开始任务",
+        "inProgress": "进行中任务",
+        "done": "已完成任务",
+        "total": "任务总数"
+      },
+      "org": {
+        "arranged": "已安排活动",
+        "reviewing": "审核中申请",
+        "rejected": "驳回申请",
+        "total": "活动总数"
+      },
+      "league": {
+        "pendingApproval": "待审核申请",
+        "approved": "审核通过",
+        "rejected": "审核驳回",
+        "total": "全局任务总数"
+      }
+    },
+    "quickPrimary": "核心入口",
+    "quickExtraHint": "其余入口已保留在下方，便于完整演示。",
+    "roleSummary": {
+      "student": "学生端优先聚焦任务执行、时间规划与个人成长档案维护。",
+      "orgAdmin": "社团端优先聚焦组织活动推进、协同审批与成员任务落地。",
+      "leagueAdmin": "团委端优先聚焦审核治理、全局看板与组织运行把控。"
+    },
+    "states": {
+      "authChecking": "正在校验登录状态...",
+      "loadingData": "正在加载首页关键数据...",
+      "errorTitle": "工作台加载失败",
+      "retry": "重试加载",
+      "partialData": "部分数据加载失败",
+      "partialOverview": "全局任务看板暂时不可用，请稍后重试。",
+      "emptyTitle": "当前暂无可展示任务",
+      "emptyDesc": "你可以先进入任务中心创建或查看任务数据。",
+      "emptyAction": "进入任务中心"
     }
   },
   "timeline": {

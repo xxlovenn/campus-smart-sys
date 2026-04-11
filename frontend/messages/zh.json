@@ -50,7 +50,16 @@
     "password": "密码",
     "login": "登录",
     "logout": "退出登录",
-    "hint": "演示账号见 README"
+    "hint": "演示账号见 README",
+    "demo": {
+      "title": "演示账号快捷切换",
+      "lineStudent": "学生端：{email} / {password}",
+      "lineOrg": "社团端：{email} / {password}",
+      "lineLeague": "团委端：{email} / {password}",
+      "fillStudent": "一键填充学生端",
+      "fillOrg": "一键填充社团端",
+      "fillLeague": "一键填充团委端"
+    }
   },
   "common": {
     "save": "保存",

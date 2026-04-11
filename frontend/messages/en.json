@@ -53,7 +53,16 @@
     "password": "Password",
     "login": "Sign in",
     "logout": "Sign out",
-    "hint": "Demo accounts are in README"
+    "hint": "Demo accounts are in README",
+    "demo": {
+      "title": "Quick Demo Account Switch",
+      "lineStudent": "Student: {email} / {password}",
+      "lineOrg": "Club admin: {email} / {password}",
+      "lineLeague": "League admin: {email} / {password}",
+      "fillStudent": "Fill Student",
+      "fillOrg": "Fill Club Admin",
+      "fillLeague": "Fill League Admin"
+    }
   },
   "common": {
     "save": "Save",

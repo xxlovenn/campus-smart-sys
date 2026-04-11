@@ -53,7 +53,16 @@
     "password": "Пароль",
     "login": "Войти",
     "logout": "Выйти",
-    "hint": "Демо-аккаунты см. README"
+    "hint": "Демо-аккаунты см. README",
+    "demo": {
+      "title": "Быстрое переключение демо-аккаунтов",
+      "lineStudent": "Студент: {email} / {password}",
+      "lineOrg": "Админ организации: {email} / {password}",
+      "lineLeague": "Админ комитета: {email} / {password}",
+      "fillStudent": "Заполнить студента",
+      "fillOrg": "Заполнить админа организации",
+      "fillLeague": "Заполнить админа комитета"
+    }
   },
   "common": {
     "save": "Сохранить",

@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { useLocale } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useRouter } from '@/navigation';
 import { apiFetch } from '@/lib/api';
 import { consumeAuthLogoutReason, setToken } from '@/lib/auth-storage';
@@ -15,7 +15,17 @@ type RegisterResponse = {
   ok: boolean;
 };
 
+const DEMO_PASSWORD = 'demo123456';
+const DEMO_ACCOUNTS = {
+  student: 'student@campus.demo',
+  org: 'org@campus.demo',
+  league: 'league@campus.demo',
+} as const;
+
+type DemoRole = keyof typeof DEMO_ACCOUNTS;
+
 export default function LoginPage() {
+  const tAuth = useTranslations('auth');
   const locale = useLocale();
   const router = useRouter();
 
@@ -122,6 +132,13 @@ export default function LoginPage() {
 
   function switchLocale(next: 'zh' | 'en' | 'ru') {
     router.replace('/', { locale: next });
+  }
+
+  function fillDemoAccount(role: DemoRole) {
+    setEmail(DEMO_ACCOUNTS[role]);
+    setPassword(DEMO_PASSWORD);
+    setLoginErr('');
+    setSessionNotice('');
   }
 
   return (
@@ -482,18 +499,66 @@ export default function LoginPage() {
                 marginBottom: 10,
               }}
             >
-              演示账号
+              {tAuth('demo.title')}
             </div>
 
-            <div style={{ display: 'grid', gap: 8, fontSize: 14, color: '#475569' }}>
-              <div>
-                学生端：<strong>student@campus.demo</strong> / demo123456
+            <div style={{ display: 'grid', gap: 10, fontSize: 14, color: '#475569' }}>
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div>
+                  {tAuth('demo.lineStudent', {
+                    email: DEMO_ACCOUNTS.student,
+                    password: DEMO_PASSWORD,
+                  })}
+                </div>
+                <button type="button" onClick={() => fillDemoAccount('student')}>
+                  {tAuth('demo.fillStudent')}
+                </button>
               </div>
-              <div>
-                社团端：<strong>org@campus.demo</strong> / demo123456
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div>
+                  {tAuth('demo.lineOrg', {
+                    email: DEMO_ACCOUNTS.org,
+                    password: DEMO_PASSWORD,
+                  })}
+                </div>
+                <button type="button" onClick={() => fillDemoAccount('org')}>
+                  {tAuth('demo.fillOrg')}
+                </button>
               </div>
-              <div>
-                团委端：<strong>league@campus.demo</strong> / demo123456
+              <div
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                  gap: 10,
+                  flexWrap: 'wrap',
+                }}
+              >
+                <div>
+                  {tAuth('demo.lineLeague', {
+                    email: DEMO_ACCOUNTS.league,
+                    password: DEMO_PASSWORD,
+                  })}
+                </div>
+                <button type="button" onClick={() => fillDemoAccount('league')}>
+                  {tAuth('demo.fillLeague')}
+                </button>
               </div>
             </div>
           </div>

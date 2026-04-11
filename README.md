@@ -33,6 +33,26 @@ docker compose up -d --build
 
 > 前端统一使用相对路径 `/api`，并通过 Next.js rewrites 转发到 `backend:3001/api`。默认无需再手动改前端 API 地址。
 
+## Backend 启动与初始化（推荐）
+
+- 正常容器启动（生产推荐，不重复 seed）：
+
+```bash
+docker compose up -d --build
+```
+
+- 首次初始化演示数据（仅需要时执行一次）：
+
+```bash
+docker compose exec backend npm run db:init
+```
+
+- 仅重置演示数据（不会重启服务）：
+
+```bash
+docker compose exec backend npm run prisma:seed
+```
+
 ## 默认演示账号（种子数据）
 
 密码均为 **`demo123456`**：

@@ -46,6 +46,19 @@ type ReviewTimelineItem = {
   at: string | null | undefined;
   ts: number;
 };
+type PendingQueueItem = {
+  key: string;
+  kind: 'profile' | 'task';
+  title: string;
+  applicant: string;
+  org?: string;
+  submittedAt?: string;
+  status: 'PENDING_APPROVAL' | 'APPROVED' | 'REJECTED';
+  waitText: string;
+  priorityScore: number;
+  profileId?: string;
+  taskId?: string;
+};
 
 function approvalBadgeClass(status?: string) {
   if (status === 'APPROVED') return 'badge badge-green';
@@ -169,6 +182,46 @@ export default function AdminPage() {
         .slice(0, 5),
     [taskRequests],
   );
+  const pendingQueue = useMemo<PendingQueueItem[]>(() => {
+    const profileItems: PendingQueueItem[] = latestPendingProfiles.map((row) => {
+      const submitTs = timeToMs(row.updatedAt);
+      return {
+        key: `profile-${row.userId}`,
+        kind: 'profile',
+        title: `档案审核：${row.user.name}`,
+        applicant: row.user.email,
+        submittedAt: row.updatedAt,
+        status: 'PENDING_APPROVAL',
+        waitText: waitingLabel(row.updatedAt),
+        // earlier submit time => higher priority
+        priorityScore: submitTs > 0 ? Date.now() - submitTs : 0,
+        profileId: row.userId,
+      };
+    });
+    const taskItems: PendingQueueItem[] = latestPendingTasks.map((row) => {
+      const submitTs = timeToMs(row.createdAt);
+      const title = row.titleZh || row.titleEn || row.titleRu || '未命名活动申请';
+      return {
+        key: `task-${row.id}`,
+        kind: 'task',
+        title,
+        applicant: row.creator?.name || row.creator?.email || '未知申请人',
+        org: row.primaryOrg?.nameZh || row.primaryOrg?.nameEn || row.primaryOrg?.nameRu || '未标注组织',
+        submittedAt: row.createdAt,
+        status: row.approvalStatus ?? 'PENDING_APPROVAL',
+        waitText: waitingLabel(row.createdAt),
+        priorityScore: submitTs > 0 ? Date.now() - submitTs : 0,
+        taskId: row.id,
+      };
+    });
+    return [...profileItems, ...taskItems]
+      .sort((a, b) => b.priorityScore - a.priorityScore)
+      .slice(0, 5);
+  }, [latestPendingProfiles, latestPendingTasks]);
+  const quickReviewRecords = useMemo(
+    () => reviewTimeline.slice(0, 8),
+    [reviewTimeline],
+  );
   const todayHandledCount = useMemo(() => {
     const isToday = (value?: string | null) => {
       if (!value) return false;
@@ -213,6 +266,7 @@ export default function AdminPage() {
     if (t) return `优先处理：活动「${t.titleZh || t.titleEn || t.titleRu || '未命名'}」`;
     return '当前没有待审核事项，可查看底部审核记录。';
   }, [latestPendingProfiles, latestPendingTasks]);
+  const totalPendingCount = pending.length + taskRequests.length;
 
   const load = useCallback(async () => {
     if (!token) return;
@@ -357,6 +411,20 @@ export default function AdminPage() {
         </div>
         {err && <div style={{ color: 'crimson' }}>{err}</div>}
 
+        <section className="card-soft admin-reminder-card">
+          <div>
+            <div className="admin-reminder-title">待处理提醒</div>
+            <div className="admin-reminder-count">{totalPendingCount}</div>
+            <p className="admin-reminder-text">
+              {totalPendingCount > 0 ? '当前仍有待审核事项，建议优先处理最早提交的申请。' : '当前待审核事项已清空，可回顾审核记录。'}
+            </p>
+          </div>
+          <div className="admin-reminder-pills">
+            <span className="badge badge-yellow">待审核档案 {pending.length}</span>
+            <span className="badge badge-red">待审核活动 {taskRequests.length}</span>
+          </div>
+        </section>
+
         <section className="card-soft">
           <h3 style={{ marginBottom: 12 }}>审核总览</h3>
           <div className="dashboard-stats-grid">
@@ -406,32 +474,53 @@ export default function AdminPage() {
           <h3 style={{ margin: 0 }}>待处理事项</h3>
           <div className="grid-two">
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-              <strong>最新待审核档案（最多 5 条）</strong>
-              {latestPendingProfiles.length === 0 ? (
-                <p className="topbar-muted" style={{ margin: 0 }}>暂无待审核档案</p>
+              <strong>优先待办清单（最多 5 条）</strong>
+              {pendingQueue.length === 0 ? (
+                <p className="topbar-muted" style={{ margin: 0 }}>暂无待审核事项</p>
               ) : (
                 <ul className="list-clean">
-                  {latestPendingProfiles.map((row, idx) => (
+                  {pendingQueue.map((row, idx) => (
                     <li
-                      key={row.userId}
+                      key={row.key}
                       className={`list-item admin-todo-item ${idx < 2 ? 'admin-todo-item-urgent' : ''}`}
                     >
                       <div style={{ display: 'grid', gap: 6 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                          <strong>{row.user.name}</strong>
+                          <strong>{row.title}</strong>
                           <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
                             {idx === 0 ? <span className="badge badge-red">最紧急</span> : null}
-                            <span className={approvalBadgeClass('PENDING_APPROVAL')}>{approvalLabel('PENDING_APPROVAL')}</span>
+                            <span className={approvalBadgeClass(row.status)}>{approvalLabel(row.status)}</span>
                           </div>
                         </div>
-                        <div className="topbar-muted admin-todo-meta">申请人：{row.user.email}</div>
-                        <div className="topbar-muted admin-todo-meta">审核对象：学生档案</div>
-                        <div className="topbar-muted admin-todo-meta">提交时间：{formatDateTime(row.updatedAt)}</div>
-                        <div className="admin-todo-wait">{waitingLabel(row.updatedAt)}</div>
+                        <div className="topbar-muted admin-todo-meta">申请人：{row.applicant}</div>
+                        <div className="topbar-muted admin-todo-meta">
+                          审核对象：{row.kind === 'profile' ? '学生档案' : '社团活动申请'}
+                        </div>
+                        {row.org ? <div className="topbar-muted admin-todo-meta">申请组织：{row.org}</div> : null}
+                        <div className="topbar-muted admin-todo-meta">提交时间：{formatDateTime(row.submittedAt)}</div>
+                        <div className="admin-todo-wait">{row.waitText}</div>
                         <div className="admin-todo-actions">
-                          <button type="button" onClick={() => review(row.userId, true)}>通过</button>
-                          <button type="button" className="logout-btn" onClick={() => review(row.userId, false)}>驳回</button>
-                          <button type="button" onClick={() => setReviewTarget(row)}>查看详情</button>
+                          {row.kind === 'profile' ? (
+                            <>
+                              <button type="button" onClick={() => row.profileId && review(row.profileId, true)}>通过</button>
+                              <button type="button" className="logout-btn" onClick={() => row.profileId && review(row.profileId, false)}>驳回</button>
+                              <button
+                                type="button"
+                                onClick={() => {
+                                  const target = pending.find((p) => p.userId === row.profileId);
+                                  if (target) setReviewTarget(target);
+                                }}
+                              >
+                                详情
+                              </button>
+                            </>
+                          ) : (
+                            <>
+                              <button type="button" onClick={() => row.taskId && reviewTaskRequest(row.taskId, true)}>通过</button>
+                              <button type="button" className="logout-btn" onClick={() => row.taskId && reviewTaskRequest(row.taskId, false)}>驳回</button>
+                              <button type="button" onClick={() => row.taskId && setActiveTaskId(row.taskId)}>详情</button>
+                            </>
+                          )}
                         </div>
                       </div>
                     </li>
@@ -441,36 +530,20 @@ export default function AdminPage() {
             </div>
 
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-              <strong>最新待审核活动申请（最多 5 条）</strong>
-              {latestPendingTasks.length === 0 ? (
-                <p className="topbar-muted" style={{ margin: 0 }}>暂无待审核活动申请</p>
+              <strong>最近审核记录（快速预览）</strong>
+              {quickReviewRecords.length === 0 ? (
+                <p className="topbar-muted" style={{ margin: 0 }}>暂无审核记录</p>
               ) : (
                 <ul className="list-clean">
-                  {latestPendingTasks.map((task, idx) => (
-                    <li
-                      key={task.id}
-                      className={`list-item admin-todo-item ${idx < 2 ? 'admin-todo-item-urgent' : ''}`}
-                    >
+                  {quickReviewRecords.map((row) => (
+                    <li key={row.id} className="list-item">
                       <div style={{ display: 'grid', gap: 6 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                          <strong>{task.titleZh || task.titleEn || task.titleRu || '—'}</strong>
-                          <div style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-                            {idx === 0 ? <span className="badge badge-red">最紧急</span> : null}
-                            <span className={approvalBadgeClass(task.approvalStatus)}>{approvalLabel(task.approvalStatus)}</span>
-                          </div>
+                          <strong>{row.title}</strong>
+                          <span className={approvalBadgeClass(row.status)}>{approvalLabel(row.status)}</span>
                         </div>
-                        <div className="topbar-muted admin-todo-meta">申请人：{task.creator?.name || task.creator?.email || '—'}</div>
-                        <div className="topbar-muted admin-todo-meta">
-                          申请组织：{task.primaryOrg?.nameZh || task.primaryOrg?.nameEn || task.primaryOrg?.nameRu || '—'}
-                        </div>
-                        <div className="topbar-muted admin-todo-meta">审核对象：社团活动申请</div>
-                        <div className="topbar-muted admin-todo-meta">提交时间：{formatDateTime(task.createdAt)}</div>
-                        <div className="admin-todo-wait">{waitingLabel(task.createdAt)}</div>
-                        <div className="admin-todo-actions">
-                          <button type="button" onClick={() => reviewTaskRequest(task.id, true)}>通过</button>
-                          <button type="button" className="logout-btn" onClick={() => reviewTaskRequest(task.id, false)}>驳回</button>
-                          <button type="button" onClick={() => setActiveTaskId(task.id)}>查看详情</button>
-                        </div>
+                        <div className="topbar-muted admin-todo-meta">审核人：{row.actor}</div>
+                        <div className="topbar-muted admin-todo-meta">时间：{formatDateTime(row.at)}</div>
                       </div>
                     </li>
                   ))}
@@ -481,7 +554,7 @@ export default function AdminPage() {
         </section>
 
         <section className="card-soft" style={{ display: 'grid', gap: 12 }}>
-          <h3 style={{ margin: 0 }}>审核操作区</h3>
+          <h3 style={{ margin: 0 }}>审核操作区（备注辅助）</h3>
           <div className="grid-two">
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
               <strong>档案审核操作</strong>

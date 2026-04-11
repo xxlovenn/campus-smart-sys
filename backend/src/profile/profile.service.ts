@@ -404,6 +404,20 @@ export class ProfileService {
     };
   }
 
+  listReviewRecords(limit = 20) {
+    return this.prisma.profile.findMany({
+      where: {
+        reviewStatus: { in: [ProfileReviewStatus.APPROVED, ProfileReviewStatus.REJECTED] },
+        user: { isOrgAccount: false },
+      },
+      include: {
+        user: { select: { id: true, name: true, email: true, studentId: true } },
+      },
+      orderBy: { updatedAt: 'desc' },
+      take: Math.max(1, Math.min(50, Number(limit) || 20)),
+    });
+  }
+
   async review(userId: string, dto: { approve: boolean; reason?: string }) {
     const exists = await this.prisma.profile.findUnique({ where: { userId } });
     if (!exists) throw new NotFoundException();

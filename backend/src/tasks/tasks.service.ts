@@ -176,7 +176,11 @@ export class TasksService {
     if (leagueApproved && allOrgApproved) {
       const updated = await (this.prisma.task as any).update({
         where: { id: taskId },
-        data: { approvalStatus: APPROVAL.APPROVED, approvedAt: task.approvedAt ?? new Date(), reviewNote: '' },
+        data: {
+          approvalStatus: APPROVAL.APPROVED,
+          approvedAt: task.approvedAt ?? new Date(),
+          reviewNote: task.reviewNote || '已通过审核',
+        },
       });
       return updated;
     }
@@ -400,8 +404,23 @@ export class TasksService {
         orgReviews: { include: { organization: true } },
         creator: { select: { id: true, name: true, email: true } },
         assignee: { select: { id: true, name: true, email: true } },
+        reviewedBy: { select: { id: true, name: true, email: true } },
       },
       orderBy: [{ createdAt: 'desc' }],
+    });
+  }
+
+  reviewRecords(limit = 20) {
+    return (this.prisma.task as any).findMany({
+      where: { approvalStatus: { in: [APPROVAL.APPROVED, APPROVAL.REJECTED] } },
+      include: {
+        primaryOrg: true,
+        creator: { select: { id: true, name: true, email: true } },
+        assignee: { select: { id: true, name: true, email: true } },
+        reviewedBy: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: [{ approvedAt: 'desc' }, { createdAt: 'desc' }],
+      take: Math.max(1, Math.min(50, Number(limit) || 20)),
     });
   }
 
@@ -418,7 +437,7 @@ export class TasksService {
         ? {
             reviewedById: reviewerId,
             approvedAt: new Date(),
-            reviewNote: '已通过团委审核',
+            reviewNote: reason?.trim() || '已通过团委审核',
           }
         : {
             approvalStatus: APPROVAL.REJECTED,

@@ -1003,6 +1003,58 @@
   background: #fafafa;
 }
 
+.audit-timeline {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 10px;
+}
+
+.audit-timeline-item {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+}
+
+.audit-timeline-dot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  margin-top: 8px;
+  flex: 0 0 10px;
+}
+
+.audit-timeline-dot-ok {
+  background: #16a34a;
+}
+
+.audit-timeline-dot-no {
+  background: #dc2626;
+}
+
+.audit-timeline-dot-pending {
+  background: #d97706;
+}
+
+.audit-timeline-main {
+  flex: 1;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+  background: #fff;
+}
+
+.audit-timeline-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 @media (max-width: 960px) {
   .task-flow-board {
     grid-template-columns: 1fr;

@@ -6,6 +6,7 @@ import {
   Param,
   Patch,
   Post,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -140,6 +141,13 @@ export class TasksController {
   @Get('admin/requests')
   requests() {
     return this.tasks.pendingRequests();
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
+  @Get('admin/review-records')
+  reviewRecords(@Query('limit') limit?: string) {
+    return this.tasks.reviewRecords(Number(limit) || 20);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

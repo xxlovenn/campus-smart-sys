@@ -246,6 +246,13 @@ export class ProfileController {
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.LEAGUE_ADMIN)
+  @Get('admin/review-records')
+  reviewRecords(@Query('limit') limit?: string) {
+    return this.profile.listReviewRecords(Number(limit) || 20);
+  }
+
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles(UserRole.LEAGUE_ADMIN)
   @Patch('admin/:userId/review')
   review(@Param('userId') userId: string, @Body() body: ReviewDto) {
     return this.profile.review(userId, body);

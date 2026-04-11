@@ -32,7 +32,7 @@ docker compose up -d --build
 - 后端 API（可直连调试）：<http://localhost:3001/api>
 
 > 前端统一使用相对路径 `/api`，并通过 Next.js rewrites 转发到 `backend:3001/api`。
-> 比赛部署时无需配置或修改 `NEXT_PUBLIC_API_URL`，也不需要重新构建前端来切换后端地址。
+> 比赛部署时无需配置或修改前端 API 环境变量，也不需要重新构建前端来切换后端地址。
 
 ## Backend 启动与初始化（推荐）
 

@@ -2,12 +2,11 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
-import { getToken } from '@/lib/auth-storage';
 import { confirmAction } from '@/lib/confirm';
 import { Modal } from '@/components/Modal';
 import { triField } from '@/lib/tri';
+import { useAuthGuard } from '@/lib/use-auth-guard';
 
 type Org = {
   id: string;
@@ -64,7 +63,7 @@ export default function OrgsPage() {
   const t = useTranslations('orgs');
   const tc = useTranslations('common');
   const locale = useLocale();
-  const token = getToken();
+  const { token, ready } = useAuthGuard();
   const [me, setMe] = useState<Me | null>(null);
   const [orgs, setOrgs] = useState<Org[]>([]);
   const [form, setForm] = useState({
@@ -351,11 +350,11 @@ export default function OrgsPage() {
     }
   }
 
-  if (!token) {
+  if (!ready || !token) {
     return (
-      <p>
-        <Link href="/">Login</Link>
-      </p>
+      <div className="page-card">
+        <p className="page-subtitle">正在校验登录状态...</p>
+      </div>
     );
   }
 

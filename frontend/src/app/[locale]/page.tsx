@@ -1,10 +1,10 @@
 'use client';
 
-import { FormEvent, useState } from 'react';
+import { FormEvent, useEffect, useState } from 'react';
 import { useLocale } from 'next-intl';
 import { useRouter } from '@/navigation';
 import { apiFetch } from '@/lib/api';
-import { setToken } from '@/lib/auth-storage';
+import { consumeAuthLogoutReason, setToken } from '@/lib/auth-storage';
 import { Modal } from '@/components/Modal';
 
 type LoginResponse = {
@@ -29,6 +29,14 @@ export default function LoginPage() {
   const [registerLoading, setRegisterLoading] = useState(false);
   const [registerErr, setRegisterErr] = useState('');
   const [registerMsg, setRegisterMsg] = useState('');
+  const [sessionNotice, setSessionNotice] = useState('');
+
+  useEffect(() => {
+    const reason = consumeAuthLogoutReason();
+    if (reason === 'session_expired') {
+      setSessionNotice('登录状态已过期，请重新登录。');
+    }
+  }, []);
 
   function normalizeTail(value: string) {
     return value.trimEnd();
@@ -58,6 +66,7 @@ export default function LoginPage() {
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
     setLoginErr('');
+    setSessionNotice('');
     setRegisterErr('');
     setRegisterMsg('');
     setLoading(true);
@@ -300,6 +309,22 @@ export default function LoginPage() {
               ))}
             </div>
           </div>
+
+          {sessionNotice ? (
+            <div
+              style={{
+                marginBottom: 16,
+                padding: '12px 14px',
+                background: '#fff7ed',
+                border: '1px solid #fed7aa',
+                color: '#9a3412',
+                borderRadius: 12,
+                fontSize: 14,
+              }}
+            >
+              {sessionNotice}
+            </div>
+          ) : null}
 
           {loginErr ? (
             <div

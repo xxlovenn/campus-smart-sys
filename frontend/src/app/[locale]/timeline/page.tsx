@@ -2,11 +2,10 @@
 
 import { useLocale } from 'next-intl';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
-import { getToken } from '@/lib/auth-storage';
 import { confirmAction } from '@/lib/confirm';
 import { triField } from '@/lib/tri';
+import { useAuthGuard } from '@/lib/use-auth-guard';
 
 type Me = {
   id: string;
@@ -38,7 +37,7 @@ function formatDateTime(value: unknown) {
 
 export default function TimelinePage() {
   const locale = useLocale();
-  const token = getToken();
+  const { token, ready } = useAuthGuard();
 
   const [me, setMe] = useState<Me | null>(null);
   const [plans, setPlans] = useState<unknown[]>([]);
@@ -208,10 +207,10 @@ export default function TimelinePage() {
     };
   }, [q]);
 
-  if (!token) {
+  if (!ready || !token) {
     return (
       <div className="page-card">
-        <Link href="/">Login</Link>
+        <p className="page-subtitle">正在校验登录状态...</p>
       </div>
     );
   }

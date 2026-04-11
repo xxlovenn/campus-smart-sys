@@ -4,7 +4,7 @@ import { useTranslations } from 'next-intl';
 import { useEffect, useMemo, useState } from 'react';
 import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
-import { getToken } from '@/lib/auth-storage';
+import { useAuthGuard } from '@/lib/use-auth-guard';
 
 type Me = {
   id: string;
@@ -94,17 +94,12 @@ function roleMessageKey(role: string): 'role.STUDENT' | 'role.ORG_ADMIN' | 'role
 
 export default function DashboardPage() {
   const t = useTranslations('dashboard');
-  const tn = useTranslations('nav');
   const tSidebar = useTranslations('sidebar');
   const tc = useTranslations('common');
-  const [token, setToken] = useState<string | null>(null);
+  const { token, ready } = useAuthGuard();
   const [me, setMe] = useState<Me | null>(null);
   const [overview, setOverview] = useState<TaskOverview | null>(null);
   const [err, setErr] = useState<string | null>(null);
-
-  useEffect(() => {
-    setToken(getToken());
-  }, []);
 
   useEffect(() => {
     if (!token) {
@@ -156,25 +151,11 @@ export default function DashboardPage() {
 
   const sidebarNs = useMemo(() => sidebarRole(me?.role), [me?.role]);
 
-  if (token === null) {
+  if (!ready || !token) {
     return (
       <div className="page-card page-section">
         <p className="page-subtitle" style={{ marginBottom: 0 }}>
           {tc('loading')}
-        </p>
-      </div>
-    );
-  }
-
-  if (!token) {
-    return (
-      <div className="page-card page-section">
-        <h1 className="page-title">{t('title')}</h1>
-        <p className="page-subtitle">
-          {t('loginHint')}{' '}
-          <Link href="/" style={{ color: 'var(--primary)', fontWeight: 700 }}>
-            {tn('login')}
-          </Link>
         </p>
       </div>
     );

@@ -4,9 +4,9 @@ import { useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
-import { getToken } from '@/lib/auth-storage';
 import { confirmAction } from '@/lib/confirm';
 import { Modal } from '@/components/Modal';
+import { useAuthGuard } from '@/lib/use-auth-guard';
 
 type Me = { role: string };
 type PendingProfile = {
@@ -31,7 +31,7 @@ type MetaOptions = {
 export default function AdminPage() {
   const t = useTranslations('profile');
   const tc = useTranslations('common');
-  const token = getToken();
+  const { token, ready } = useAuthGuard();
   const [me, setMe] = useState<Me | null>(null);
   const [pending, setPending] = useState<PendingProfile[]>([]);
   const [taskRequests, setTaskRequests] = useState<TaskRequest[]>([]);
@@ -138,11 +138,11 @@ export default function AdminPage() {
     }
   }
 
-  if (!token) {
+  if (!ready || !token) {
     return (
-      <p>
-        <Link href="/">Login</Link>
-      </p>
+      <div className="page-card">
+        <p className="page-subtitle">正在校验登录状态...</p>
+      </div>
     );
   }
 

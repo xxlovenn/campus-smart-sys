@@ -2,12 +2,11 @@
 
 import { useLocale } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
-import { getToken } from '@/lib/auth-storage';
 import { confirmAction } from '@/lib/confirm';
 import { Modal } from '@/components/Modal';
 import { triField } from '@/lib/tri';
+import { useAuthGuard } from '@/lib/use-auth-guard';
 
 type Me = {
   id: string;
@@ -90,7 +89,7 @@ type GradeMajorRequest = {
 
 export default function ProfilePage() {
   const locale = useLocale();
-  const token = getToken();
+  const { token, ready } = useAuthGuard();
   const [me, setMe] = useState<Me | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [students, setStudents] = useState<AdminStudentRow[]>([]);
@@ -392,10 +391,10 @@ export default function ProfilePage() {
     }
   }
 
-  if (!token) {
+  if (!ready || !token) {
     return (
       <div className="page-card">
-        <Link href="/">Login</Link>
+        <p className="page-subtitle">正在校验登录状态...</p>
       </div>
     );
   }

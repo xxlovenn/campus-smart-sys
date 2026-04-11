@@ -1,3 +1,6 @@
+import { routing } from '@/i18n/routing';
+import { clearToken, emitAuthLogout } from './auth-storage';
+
 export function getApiBase(): string {
   return process.env.NEXT_PUBLIC_API_URL || '/api';
 }
@@ -8,6 +11,37 @@ function joinUrl(base: string, path: string) {
   return `${normalizedBase}${normalizedPath}`;
 }
 
+export class ApiError extends Error {
+  status: number;
+  payload: string;
+
+  constructor(message: string, status: number, payload: string) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.payload = payload;
+  }
+}
+
+let unauthorizedRedirecting = false;
+
+function handleUnauthorized() {
+  if (typeof window === 'undefined') return;
+  clearToken();
+  emitAuthLogout('session_expired');
+  if (unauthorizedRedirecting) return;
+  unauthorizedRedirecting = true;
+
+  const firstSegment = window.location.pathname.split('/').filter(Boolean)[0] ?? '';
+  const locale = routing.locales.includes(firstSegment as (typeof routing.locales)[number])
+    ? firstSegment
+    : routing.defaultLocale;
+  const loginPath = `/${locale}`;
+  if (window.location.pathname !== loginPath) {
+    window.location.replace(loginPath);
+  }
+}
+
 export async function apiFetch<T = unknown>(
   path: string,
   opts: RequestInit & { token?: string | null } = {},
@@ -16,12 +50,16 @@ export async function apiFetch<T = unknown>(
   if (!headers.has('Content-Type') && opts.body) {
     headers.set('Content-Type', 'application/json');
   }
-  if (opts.token) headers.set('Authorization', `Bearer ${opts.token}`);
+  const hasAuthToken = Boolean(opts.token);
+  if (hasAuthToken) headers.set('Authorization', `Bearer ${opts.token}`);
   const { token, ...rest } = opts;
   const res = await fetch(joinUrl(getApiBase(), path), { ...rest, headers });
   const text = await res.text();
   if (!res.ok) {
-    throw new Error(text || res.statusText);
+    if (res.status === 401 && hasAuthToken) {
+      handleUnauthorized();
+    }
+    throw new ApiError(text || res.statusText, res.status, text);
   }
   if (!text) return undefined as T;
   try {

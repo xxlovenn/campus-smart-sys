@@ -2,12 +2,11 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
-import { getToken } from '@/lib/auth-storage';
 import { confirmAction } from '@/lib/confirm';
 import { Modal } from '@/components/Modal';
 import { triField } from '@/lib/tri';
+import { useAuthGuard } from '@/lib/use-auth-guard';
 
 type Me = {
   id: string;
@@ -149,7 +148,7 @@ export default function TasksPage() {
   const t = useTranslations('tasks');
   const tc = useTranslations('common');
   const locale = useLocale();
-  const token = getToken();
+  const { token, ready } = useAuthGuard();
 
   const [me, setMe] = useState<Me | null>(null);
   const [tasks, setTasks] = useState<Task[]>([]);
@@ -187,12 +186,6 @@ export default function TasksPage() {
 
   const load = useCallback(async () => {
     if (!token) {
-      setErr('登录已失效，请重新登录');
-      setTasks([]);
-      setMe(null);
-      setOrgs([]);
-      setUsers([]);
-      setOrgReviewRequests([]);
       return;
     }
 
@@ -413,11 +406,10 @@ export default function TasksPage() {
     }
   }
 
-  if (!token) {
+  if (!ready || !token) {
     return (
       <div className="page-card">
-        <p>登录已失效，请先重新登录。</p>
-        <Link href="/">返回登录页</Link>
+        <p className="page-subtitle">正在校验登录状态...</p>
       </div>
     );
   }

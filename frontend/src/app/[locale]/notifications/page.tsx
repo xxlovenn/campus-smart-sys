@@ -2,11 +2,10 @@
 
 import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
-import { getToken } from '@/lib/auth-storage';
 import { confirmAction } from '@/lib/confirm';
 import { triField } from '@/lib/tri';
+import { useAuthGuard } from '@/lib/use-auth-guard';
 
 type N = { id: string; read: boolean; createdAt: string } & Record<string, unknown>;
 
@@ -14,7 +13,7 @@ export default function NotificationsPage() {
   const t = useTranslations('notifications');
   const tc = useTranslations('common');
   const locale = useLocale();
-  const token = getToken();
+  const { token, ready } = useAuthGuard();
   const [items, setItems] = useState<N[]>([]);
   const [err, setErr] = useState<string | null>(null);
 
@@ -47,11 +46,11 @@ export default function NotificationsPage() {
     load();
   }
 
-  if (!token) {
+  if (!ready || !token) {
     return (
-      <p>
-        <Link href="/">Login</Link>
-      </p>
+      <div className="page-card">
+        <p className="page-subtitle">正在校验登录状态...</p>
+      </div>
     );
   }
 

@@ -139,15 +139,18 @@ export class TasksController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.LEAGUE_ADMIN)
   @Get('admin/requests')
-  requests() {
-    return this.tasks.pendingRequests();
+  requests(@Query('stage') stage?: 'LEAGUE_REVIEW' | 'CO_ORG_REVIEW' | 'ALL') {
+    return this.tasks.pendingRequests(stage);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.LEAGUE_ADMIN)
   @Get('admin/review-records')
-  reviewRecords(@Query('limit') limit?: string) {
-    return this.tasks.reviewRecords(Number(limit) || 20);
+  reviewRecords(
+    @Query('limit') limit?: string,
+    @Query('source') source?: 'ORG_REQUEST' | 'LEAGUE_PUBLISHED' | 'ALL',
+  ) {
+    return this.tasks.reviewRecords(Number(limit) || 20, source);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

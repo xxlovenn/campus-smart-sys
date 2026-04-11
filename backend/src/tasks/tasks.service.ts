@@ -395,8 +395,8 @@ export class TasksService {
     return { grouped, tasks };
   }
 
-  pendingRequests() {
-    return (this.prisma.task as any).findMany({
+  async pendingRequests(stage: 'LEAGUE_REVIEW' | 'CO_ORG_REVIEW' | 'ALL' = 'LEAGUE_REVIEW') {
+    const rows = await (this.prisma.task as any).findMany({
       where: { approvalStatus: APPROVAL.PENDING },
       include: {
         primaryOrg: true,
@@ -408,11 +408,25 @@ export class TasksService {
       },
       orderBy: [{ createdAt: 'desc' }],
     });
+    const withStage = rows.map((row: any) => {
+      const hasOrgReviews = Array.isArray(row.orgReviews) && row.orgReviews.length > 0;
+      const waitingCoOrgs = hasOrgReviews && row.orgReviews.some((r: any) => r.status === ORG_REVIEW.PENDING);
+      const queueStage =
+        row.reviewedById && waitingCoOrgs
+          ? 'CO_ORG_REVIEW'
+          : 'LEAGUE_REVIEW';
+      return { ...row, queueStage };
+    });
+    if (stage === 'ALL') return withStage;
+    return withStage.filter((row: any) => row.queueStage === stage);
   }
 
-  reviewRecords(limit = 20) {
+  reviewRecords(limit = 20, source: 'ORG_REQUEST' | 'LEAGUE_PUBLISHED' | 'ALL' = 'ORG_REQUEST') {
     return (this.prisma.task as any).findMany({
-      where: { approvalStatus: { in: [APPROVAL.APPROVED, APPROVAL.REJECTED] } },
+      where: {
+        approvalStatus: { in: [APPROVAL.APPROVED, APPROVAL.REJECTED] },
+        ...(source === 'ALL' ? {} : { source }),
+      },
       include: {
         primaryOrg: true,
         creator: { select: { id: true, name: true, email: true } },

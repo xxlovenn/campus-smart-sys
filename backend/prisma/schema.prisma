@@ -100,6 +100,7 @@ model User {
   createdTasks      Task[]               @relation("TaskCreator")
   assignedTasks     Task[]               @relation("TaskAssignee")
   reviewedTasks     Task[]               @relation("TaskReviewer")
+  reviewedProfiles  Profile[]            @relation("ProfileReviewer")
   reviewedOrgTasks  TaskOrgReview[]      @relation("TaskOrgReviewer")
   plans             PersonalPlan[]
   scheduleEntries   ScheduleEntry[]
@@ -255,11 +256,15 @@ model Profile {
   identityRu    String                @default("")
   reviewStatus  ProfileReviewStatus   @default(PENDING)
   rejectReason  String?
+  submittedAt   DateTime?
+  reviewedAt    DateTime?
+  reviewedById  String?
   updatedAt     DateTime              @updatedAt
 
-  user   User        @relation(fields: [userId], references: [id], onDelete: Cascade)
-  awards Award[]
-  tags   SkillTag[]
+  user       User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  reviewedBy User?  @relation("ProfileReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  awards     Award[]
+  tags       SkillTag[]
 }
 
 model Award {

@@ -41,7 +41,7 @@
       "orgs": "组织管理",
       "tasks": "团委任务",
       "timeline": "校级日程",
-      "profile": "学生档案",
+      "profile": "学生档案中心",
       "notifications": "通知"
     }
   },
@@ -96,7 +96,7 @@
       "timeline": "个人计划、课程安排与临近事项",
       "tasks": "参与活动任务与进度跟踪",
       "organizations": "查看所属组织信息",
-      "profile": "基础信息、奖项荣誉与能力标签",
+      "profile": "档案中心：基础信息、奖项荣誉与能力标签",
       "notifications": "系统通知与待办提醒",
       "admin": "待审核档案与团委工具"
     },
@@ -334,7 +334,35 @@
     "awards": "荣誉奖项",
     "tags": "能力标签",
     "pending": "待审核档案",
-    "review": "审核"
+    "review": "审核",
+    "center": {
+      "subtitle": "基础信息先保存，统一提交后进入团委审核并留痕反馈",
+      "overviewTitle": "我的档案总览",
+      "overviewDesc": "面向评优评先/推优/骨干选拔的一体化档案中心",
+      "stats": {
+        "completeness": "档案完整度",
+        "submittedAt": "最近提交时间",
+        "reviewedAt": "最近审核时间",
+        "materials": "档案材料",
+        "materialSplit": "奖项 {awards} · 标签 {tags}"
+      },
+      "suggestionsTitle": "待补充建议",
+      "modules": {
+        "basic": "基础信息管理",
+        "identity": "身份信息管理",
+        "practice": "志愿与实践",
+        "tags": "能力标签管理",
+        "awards": "奖项荣誉管理",
+        "feedback": "审核反馈"
+      },
+      "actions": {
+        "submitProfile": "提交档案审核",
+        "submitGradeMajor": "提交年级/专业审核申请",
+        "saveDraft": "保存基础信息草稿",
+        "submitTag": "提交标签新增申请",
+        "submitAward": "提交奖项新增申请"
+      }
+    }
   },
   "notifications": { "title": "通知中心", "markAll": "全部已读" }
 }

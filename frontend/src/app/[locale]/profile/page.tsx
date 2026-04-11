@@ -1,6 +1,6 @@
 'use client';
 
-import { useLocale } from 'next-intl';
+import { useLocale, useTranslations } from 'next-intl';
 import { useCallback, useEffect, useState } from 'react';
 import { apiFetch } from '@/lib/api';
 import { confirmAction } from '@/lib/confirm';
@@ -27,6 +27,9 @@ type Profile = {
   identityRu?: string;
   reviewStatus: string;
   rejectReason?: string | null;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: { id: string; name?: string; email?: string } | null;
   awards: Record<string, unknown>[];
   tags: Record<string, unknown>[];
 };
@@ -87,8 +90,15 @@ type GradeMajorRequest = {
   user?: { id: string; name?: string; email?: string; studentId?: string };
 };
 
+function profileStatusBadge(status?: string) {
+  if (status === 'APPROVED') return { className: 'badge badge-green', label: '已通过' };
+  if (status === 'REJECTED') return { className: 'badge badge-red', label: '已驳回' };
+  return { className: 'badge badge-yellow', label: '待审核' };
+}
+
 export default function ProfilePage() {
   const locale = useLocale();
+  const t = useTranslations('profile.center');
   const { token, ready } = useAuthGuard();
   const [me, setMe] = useState<Me | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
@@ -246,6 +256,20 @@ export default function ProfilePage() {
     }
   }
 
+  async function submitProfileForReview() {
+    if (!token) return;
+    if (!confirmAction('确认提交个人档案进入团委审核吗？')) return;
+    try {
+      await apiFetch('/profile/me/submit', {
+        method: 'POST',
+        token,
+      });
+      await load();
+    } catch (e) {
+      setErr(e instanceof Error ? e.message : '提交审核失败');
+    }
+  }
+
   async function addAwardRequest(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
@@ -400,15 +424,62 @@ export default function ProfilePage() {
   }
   if (!me) return null;
   const isLeagueAdmin = me.role === 'LEAGUE_ADMIN';
+  const statusMeta = profileStatusBadge(profile?.reviewStatus);
+  const profileCompleteness = (() => {
+    const total = 8;
+    const checks = [
+      !!basic.name.trim(),
+      !!basic.studentId.trim(),
+      !!basic.phone.trim(),
+      !!basic.email.trim(),
+      !!basic.grade.trim(),
+      !!basic.major.trim(),
+      !!basic.github.trim(),
+      !!basic.identity.trim(),
+    ];
+    const done = checks.filter(Boolean).length;
+    return { done, total, percent: Math.round((done / total) * 100) };
+  })();
+  const archiveSuggestions = (() => {
+    const tips: string[] = [];
+    if (!basic.identity.trim()) tips.push('请补充身份信息，便于团委核验。');
+    if (profile?.awards.length === 0) tips.push('建议至少提交一条奖项/荣誉记录。');
+    if (profile?.tags.length === 0) tips.push('建议补充能力标签，突出个人优势。');
+    if (!basic.github.trim()) tips.push('建议补充 GitHub 链接以展示实践能力。');
+    return tips.slice(0, 3);
+  })();
+  const latestRequests = (() => {
+    const rows = [
+      ...myGradeMajorRequests.map((r) => ({
+        id: `gm-${r.id}`,
+        title: `年级/专业变更：${(r.fromGrade || '未设置') + '级 / ' + (r.fromMajor || '未设置')} → ${(r.toGrade || '未设置') + '级 / ' + (r.toMajor || '未设置')}`,
+        status: r.status,
+        reason: r.reason,
+      })),
+      ...myAwardRequests.map((r) => ({
+        id: `award-${r.id}`,
+        title: `奖项${r.action === 'ADD' ? '新增' : '删除'}：${r.titleZh || '—'}`,
+        status: r.status,
+        reason: r.reason,
+      })),
+      ...myTagRequests.map((r) => ({
+        id: `tag-${r.id}`,
+        title: `标签${r.action === 'ADD' ? '新增' : '删除'}：${(r.categoryZh || '—') + ' / ' + (r.nameZh || '—')}`,
+        status: r.status,
+        reason: r.reason,
+      })),
+    ];
+    return rows.slice(0, 10);
+  })();
 
   return (
     <div className="page-container">
       <div className="page-card">
-        <h1 className="page-title">{isLeagueAdmin ? '学生档案管理' : '个人档案'}</h1>
+        <h1 className="page-title">{isLeagueAdmin ? '学生档案中心' : '个人档案'}</h1>
         <p className="page-subtitle">
           {isLeagueAdmin
-            ? '审核学生档案与奖项/标签变更申请'
-            : '基础信息直接保存；奖项荣誉与能力标签需提交团委审核后生效'}
+            ? '检索学生、查看并维护档案；处理年级/专业、奖项与标签等变更审核。'
+            : t('subtitle')}
         </p>
 
         {err && (
@@ -419,10 +490,56 @@ export default function ProfilePage() {
 
         {!isLeagueAdmin && profile ? (
           <>
-            <div className="page-section">
-              <div className="card-soft">
-                <h3 style={{ marginBottom: 14 }}>基础信息</h3>
-                <form onSubmit={saveProfile} style={{ display: 'grid', gap: 10, maxWidth: 700 }}>
+            <section className="card-soft" style={{ display: 'grid', gap: 12 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                <div>
+                  <h3 style={{ margin: 0 }}>{t('overviewTitle')}</h3>
+                  <p className="topbar-muted" style={{ margin: 0 }}>
+                    {t('overviewDesc')}
+                  </p>
+                </div>
+                <span className={statusMeta.className}>{statusMeta.label}</span>
+              </div>
+              <div className="dashboard-stats-grid">
+                <div className="dashboard-stat-card">
+                  <div className="topbar-muted">{t('stats.completeness')}</div>
+                  <strong className="dashboard-stat-value">{profileCompleteness.percent}%</strong>
+                  <div className="topbar-muted">{profileCompleteness.done}/{profileCompleteness.total} 项</div>
+                </div>
+                <div className="dashboard-stat-card">
+                  <div className="topbar-muted">{t('stats.submittedAt')}</div>
+                  <strong className="dashboard-stat-value" style={{ fontSize: 18 }}>{profile.submittedAt ? new Date(profile.submittedAt).toLocaleString() : '未提交'}</strong>
+                </div>
+                <div className="dashboard-stat-card">
+                  <div className="topbar-muted">{t('stats.reviewedAt')}</div>
+                  <strong className="dashboard-stat-value" style={{ fontSize: 18 }}>{profile.reviewedAt ? new Date(profile.reviewedAt).toLocaleString() : '未审核'}</strong>
+                </div>
+                <div className="dashboard-stat-card">
+                  <div className="topbar-muted">{t('stats.materials')}</div>
+                  <strong className="dashboard-stat-value">{profile.awards.length + profile.tags.length}</strong>
+                  <div className="topbar-muted">{t('stats.materialSplit', { awards: profile.awards.length, tags: profile.tags.length })}</div>
+                </div>
+              </div>
+              {archiveSuggestions.length > 0 ? (
+                <div className="card-soft" style={{ display: 'grid', gap: 6 }}>
+                  <strong>{t('suggestionsTitle')}</strong>
+                  <ul className="list-clean">
+                    {archiveSuggestions.map((tip) => (
+                      <li key={tip} className="list-item">{tip}</li>
+                    ))}
+                  </ul>
+                </div>
+              ) : null}
+              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                <button type="button" onClick={submitProfileForReview}>{t('actions.submitProfile')}</button>
+                <button type="button" onClick={submitGradeMajorReviewRequest}>{t('actions.submitGradeMajor')}</button>
+              </div>
+            </section>
+
+            <div className="grid-two">
+              <section className="card-soft" style={{ display: 'grid', gap: 12 }}>
+                <h3 style={{ margin: 0 }}>{t('modules.basic')}</h3>
+                <form onSubmit={saveProfile} style={{ display: 'grid', gap: 10 }}>
                   <div className="grid-two">
                     <input placeholder="姓名" value={basic.name} onChange={(e) => setBasic((s) => ({ ...s, name: e.target.value }))} />
                     <input placeholder="学号" value={basic.studentId} onChange={(e) => setBasic((s) => ({ ...s, studentId: e.target.value }))} />
@@ -435,75 +552,54 @@ export default function ProfilePage() {
                     <label style={{ display: 'grid', gap: 6 }}>
                       <span className="topbar-muted">年级</span>
                       <div style={{ display: 'flex', gap: 8 }}>
-                        <input
-                          value={basic.grade ? `${basic.grade}级` : ''}
-                          placeholder="请选择年级"
-                          readOnly
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setPicker({ open: true, kind: 'grade' })}
-                        >
-                          选择
-                        </button>
+                        <input value={basic.grade ? `${basic.grade}级` : ''} placeholder="请选择年级" readOnly />
+                        <button type="button" onClick={() => setPicker({ open: true, kind: 'grade' })}>选择</button>
                       </div>
                     </label>
                     <label style={{ display: 'grid', gap: 6 }}>
                       <span className="topbar-muted">专业</span>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <input value={basic.major} placeholder="请选择专业" readOnly />
-                        <button
-                          type="button"
-                          onClick={() => setPicker({ open: true, kind: 'major' })}
-                        >
-                          选择
-                        </button>
+                        <button type="button" onClick={() => setPicker({ open: true, kind: 'major' })}>选择</button>
                       </div>
                     </label>
                   </div>
-                  <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-                    <div className="topbar-muted">
-                      年级/专业修改需二次确认并提交团委审核，通过后生效。
-                    </div>
-                    <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                      <button type="button" onClick={submitGradeMajorReviewRequest}>
-                        提交年级/专业审核申请
-                      </button>
-                    </div>
-                  </div>
                   <input placeholder="GitHub" value={basic.github} onChange={(e) => setBasic((s) => ({ ...s, github: e.target.value }))} />
-                  <textarea rows={2} placeholder="身份信息（单语输入，自动互通多语言）" value={basic.identity} onChange={(e) => setBasic((s) => ({ ...s, identity: e.target.value }))} />
-                  <button type="submit">保存基础信息</button>
+                  <button type="submit">{t('actions.saveDraft')}</button>
                 </form>
-              </div>
+              </section>
+
+              <section className="card-soft" style={{ display: 'grid', gap: 12 }}>
+                <h3 style={{ margin: 0 }}>{t('modules.identity')}</h3>
+                <textarea
+                  rows={4}
+                  placeholder="身份信息（单语输入，自动互通多语言）"
+                  value={basic.identity}
+                  onChange={(e) => setBasic((s) => ({ ...s, identity: e.target.value }))}
+                />
+                <p className="topbar-muted" style={{ margin: 0 }}>
+                  建议填写民族、身份证号、志愿号、政治面貌等，便于审核核验。
+                </p>
+              </section>
             </div>
 
             <div className="grid-two">
-              <div className="card-soft">
-                <h3 style={{ marginBottom: 14 }}>奖项荣誉管理</h3>
-                <form onSubmit={addAwardRequest} style={{ display: 'grid', gap: 10 }}>
-                  <input placeholder="奖项名称（单语输入，多语言互通）" value={awardInput.title} onChange={(e) => setAwardInput((s) => ({ ...s, title: e.target.value }))} required />
-                  <input placeholder="证明链接（可选）" value={awardInput.proof} onChange={(e) => setAwardInput((s) => ({ ...s, proof: e.target.value }))} />
-                  <button type="submit">提交新增申请</button>
-                </form>
-                <ul className="list-clean" style={{ marginTop: 16 }}>
-                  {profile.awards.map((a) => (
-                    <li key={String(a.id)} className="list-item" style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
-                      <span>{triField(a as Record<string, unknown>, 'title', locale)}</span>
-                      <button type="button" className="logout-btn" onClick={() => requestDeleteAward(String((a as Record<string, unknown>).id || ''))}>申请删除</button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
+              <section className="card-soft" style={{ display: 'grid', gap: 10 }}>
+                <h3 style={{ margin: 0 }}>{t('modules.practice')}</h3>
+                <p className="topbar-muted" style={{ margin: 0 }}>
+                  当前阶段通过“奖项荣誉”与“能力标签”记录实践成果，后续可扩展真实实践 API。
+                </p>
+                <div className="topbar-muted">建议补充：志愿时长、服务活动、社会实践记录。</div>
+              </section>
 
-              <div className="card-soft">
-                <h3 style={{ marginBottom: 14 }}>能力标签管理</h3>
+              <section className="card-soft" style={{ display: 'grid', gap: 10 }}>
+                <h3 style={{ margin: 0 }}>{t('modules.tags')}</h3>
                 <form onSubmit={addTagRequest} style={{ display: 'grid', gap: 10 }}>
                   <input placeholder="标签分类（单语输入，多语言互通）" value={tagInput.category} onChange={(e) => setTagInput((s) => ({ ...s, category: e.target.value }))} required />
                   <input placeholder="标签名称（单语输入，多语言互通）" value={tagInput.name} onChange={(e) => setTagInput((s) => ({ ...s, name: e.target.value }))} required />
-                  <button type="submit">提交新增申请</button>
+                  <button type="submit">{t('actions.submitTag')}</button>
                 </form>
-                <ul className="list-clean" style={{ marginTop: 16 }}>
+                <ul className="list-clean">
                   {profile.tags.map((x) => {
                     const o = x as Record<string, unknown>;
                     return (
@@ -514,36 +610,60 @@ export default function ProfilePage() {
                     );
                   })}
                 </ul>
-              </div>
+              </section>
             </div>
 
-            <div className="page-section">
-              <div className="card-soft">
-                <h3 style={{ marginBottom: 12 }}>我的档案变更申请记录</h3>
+            <div className="grid-two">
+              <section className="card-soft" style={{ display: 'grid', gap: 10 }}>
+                <h3 style={{ margin: 0 }}>{t('modules.awards')}</h3>
+                <form onSubmit={addAwardRequest} style={{ display: 'grid', gap: 10 }}>
+                  <input placeholder="奖项名称（单语输入，多语言互通）" value={awardInput.title} onChange={(e) => setAwardInput((s) => ({ ...s, title: e.target.value }))} required />
+                  <input placeholder="证明链接（可选）" value={awardInput.proof} onChange={(e) => setAwardInput((s) => ({ ...s, proof: e.target.value }))} />
+                  <button type="submit">{t('actions.submitAward')}</button>
+                </form>
                 <ul className="list-clean">
-                  {myGradeMajorRequests.map((r) => (
-                    <li key={r.id} className="list-item">
-                      年级/专业 · {(r.fromGrade || '未设置') + '级 / ' + (r.fromMajor || '未设置')} → {(r.toGrade || '未设置') + '级 / ' + (r.toMajor || '未设置')} · {r.status}
-                      {r.reason ? ` · ${r.reason}` : ''}
+                  {profile.awards.map((a) => (
+                    <li key={String(a.id)} className="list-item" style={{ display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <span>{triField(a as Record<string, unknown>, 'title', locale)}</span>
+                      <button type="button" className="logout-btn" onClick={() => requestDeleteAward(String((a as Record<string, unknown>).id || ''))}>申请删除</button>
                     </li>
                   ))}
-                  {myAwardRequests.map((r) => (
-                    <li key={r.id} className="list-item">
-                      奖项 · {r.action === 'ADD' ? '新增' : '删除'} · {r.titleZh || '—'} · {r.status}
-                      {r.reason ? ` · ${r.reason}` : ''}
-                    </li>
-                  ))}
-                  {myTagRequests.map((r) => (
-                    <li key={r.id} className="list-item">
-                      标签 · {r.action === 'ADD' ? '新增' : '删除'} · {(r.categoryZh || '—') + ' / ' + (r.nameZh || '—')} · {r.status}
-                      {r.reason ? ` · ${r.reason}` : ''}
-                    </li>
-                  ))}
-                  {myGradeMajorRequests.length + myAwardRequests.length + myTagRequests.length === 0 ? (
-                    <li className="list-item">暂无申请记录</li>
-                  ) : null}
                 </ul>
-              </div>
+              </section>
+
+              <section className="card-soft" style={{ display: 'grid', gap: 10 }}>
+                <h3 style={{ margin: 0 }}>{t('modules.feedback')}</h3>
+                <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+                  <span className={statusMeta.className}>{statusMeta.label}</span>
+                  <span className="topbar-muted">
+                    审核人：{profile.reviewedBy?.name || profile.reviewedBy?.email || '—'}
+                  </span>
+                </div>
+                <div className="topbar-muted">
+                  提交时间：{profile.submittedAt ? new Date(profile.submittedAt).toLocaleString() : '—'}
+                </div>
+                <div className="topbar-muted">
+                  审核时间：{profile.reviewedAt ? new Date(profile.reviewedAt).toLocaleString() : '—'}
+                </div>
+                {profile.rejectReason ? (
+                  <div className="card-soft" style={{ border: '1px solid #fecaca', color: '#b91c1c' }}>
+                    驳回原因：{profile.rejectReason}
+                  </div>
+                ) : null}
+                <strong>最近变更申请记录</strong>
+                <ul className="list-clean">
+                  {latestRequests.length === 0 ? (
+                    <li className="list-item">暂无申请记录</li>
+                  ) : (
+                    latestRequests.map((row) => (
+                      <li key={row.id} className="list-item">
+                        {row.title} · {row.status}
+                        {row.reason ? ` · ${row.reason}` : ''}
+                      </li>
+                    ))
+                  )}
+                </ul>
+              </section>
             </div>
           </>
         ) : null}
@@ -602,7 +722,7 @@ export default function ProfilePage() {
 
             <div className="page-section">
               <div className="card-soft" style={{ display: 'grid', gap: 12 }}>
-                <h3 style={{ marginBottom: 0 }}>学生档案列表</h3>
+                <h3 style={{ marginBottom: 0 }}>学生档案中心 · 列表检索</h3>
                 <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
                   <select value={searchMode} onChange={(e) => setSearchMode(e.target.value as 'name' | 'studentId' | 'idCard')} style={{ maxWidth: 180 }}>
                     <option value="name">按姓名</option>
@@ -628,7 +748,16 @@ export default function ProfilePage() {
         )}
       </div>
 
-      <Modal open={!!studentDetail} title={studentDetail ? `学生档案：${studentDetail.user.name || studentDetail.user.email}` : '学生档案'} onClose={() => setStudentDetail(null)} width={880}>
+      <Modal
+        open={!!studentDetail}
+        title={
+          studentDetail
+            ? `学生档案中心 · ${studentDetail.user.name || studentDetail.user.email}`
+            : '学生档案中心'
+        }
+        onClose={() => setStudentDetail(null)}
+        width={880}
+      >
         {studentDetail ? (
           <div style={{ display: 'grid', gap: 12 }}>
             <div className="grid-two">

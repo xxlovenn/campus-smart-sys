@@ -190,6 +190,52 @@ async function main() {
     },
   });
 
+  const approvedStudent = await prisma.user.upsert({
+    where: { email: 'student.approved@campus.demo' },
+    update: {
+      idCard: '110101200512125678',
+      grade: '2022',
+      major: '软件工程',
+      className: '软工2班',
+    },
+    create: {
+      id: randomUUID(),
+      email: 'student.approved@campus.demo',
+      passwordHash: password,
+      name: '已通过学生',
+      studentId: '20260002',
+      phone: '13800000004',
+      idCard: '110101200512125678',
+      grade: '2022',
+      major: '软件工程',
+      className: '软工2班',
+      role: UserRole.STUDENT,
+    },
+  });
+
+  const rejectedStudent = await prisma.user.upsert({
+    where: { email: 'student.rejected@campus.demo' },
+    update: {
+      idCard: '110101200410102222',
+      grade: '2021',
+      major: '数据科学与大数据技术',
+      className: '数科3班',
+    },
+    create: {
+      id: randomUUID(),
+      email: 'student.rejected@campus.demo',
+      passwordHash: password,
+      name: '已驳回学生',
+      studentId: '20260003',
+      phone: '13800000005',
+      idCard: '110101200410102222',
+      grade: '2021',
+      major: '数据科学与大数据技术',
+      className: '数科3班',
+      role: UserRole.STUDENT,
+    },
+  });
+
   const studentUnionAccount = 'club.union@campus.demo';
   const studentUnionPassword = 'ClubUNION2026!';
   const studentUnionPasswordHash = await bcrypt.hash(studentUnionPassword, 10);
@@ -319,7 +365,13 @@ async function main() {
 
   await prisma.profile.upsert({
     where: { userId: student.id },
-    update: {},
+    update: {
+      submittedAt: new Date(Date.now() - 6 * 3600000),
+      reviewedAt: null,
+      reviewedById: null,
+      rejectReason: null,
+      reviewStatus: ProfileReviewStatus.PENDING,
+    },
     create: {
       userId: student.id,
       githubUrl: 'https://github.com/demo-student',
@@ -327,6 +379,61 @@ async function main() {
       identityEn: 'Undergraduate / CS',
       identityRu: 'Бакалавр / ИТ',
       reviewStatus: ProfileReviewStatus.PENDING,
+      submittedAt: new Date(Date.now() - 6 * 3600000),
+    },
+  });
+
+  await prisma.profile.upsert({
+    where: { userId: approvedStudent.id },
+    update: {
+      githubUrl: 'https://github.com/demo-approved',
+      identityZh: '本科在读 / 软件工程',
+      identityEn: 'Undergraduate / Software Engineering',
+      identityRu: 'Бакалавр / Программная инженерия',
+      reviewStatus: ProfileReviewStatus.APPROVED,
+      rejectReason: null,
+      submittedAt: new Date(Date.now() - 3 * 86400000),
+      reviewedAt: new Date(Date.now() - 2 * 86400000),
+      reviewedById: league.id,
+    },
+    create: {
+      userId: approvedStudent.id,
+      githubUrl: 'https://github.com/demo-approved',
+      identityZh: '本科在读 / 软件工程',
+      identityEn: 'Undergraduate / Software Engineering',
+      identityRu: 'Бакалавр / Программная инженерия',
+      reviewStatus: ProfileReviewStatus.APPROVED,
+      rejectReason: null,
+      submittedAt: new Date(Date.now() - 3 * 86400000),
+      reviewedAt: new Date(Date.now() - 2 * 86400000),
+      reviewedById: league.id,
+    },
+  });
+
+  await prisma.profile.upsert({
+    where: { userId: rejectedStudent.id },
+    update: {
+      githubUrl: '',
+      identityZh: '本科在读 / 数据科学',
+      identityEn: 'Undergraduate / Data Science',
+      identityRu: 'Бакалавр / Data Science',
+      reviewStatus: ProfileReviewStatus.REJECTED,
+      rejectReason: '身份证与学籍信息不一致，请补充证明材料后重新提交',
+      submittedAt: new Date(Date.now() - 2 * 86400000),
+      reviewedAt: new Date(Date.now() - 1 * 86400000),
+      reviewedById: league.id,
+    },
+    create: {
+      userId: rejectedStudent.id,
+      githubUrl: '',
+      identityZh: '本科在读 / 数据科学',
+      identityEn: 'Undergraduate / Data Science',
+      identityRu: 'Бакалавр / Data Science',
+      reviewStatus: ProfileReviewStatus.REJECTED,
+      rejectReason: '身份证与学籍信息不一致，请补充证明材料后重新提交',
+      submittedAt: new Date(Date.now() - 2 * 86400000),
+      reviewedAt: new Date(Date.now() - 1 * 86400000),
+      reviewedById: league.id,
     },
   });
 
@@ -408,6 +515,8 @@ async function main() {
   });
 
   await prisma.award.deleteMany({ where: { profileUserId: student.id } });
+  await prisma.award.deleteMany({ where: { profileUserId: approvedStudent.id } });
+  await prisma.award.deleteMany({ where: { profileUserId: rejectedStudent.id } });
   await prisma.award.createMany({
     data: [
       {
@@ -417,10 +526,19 @@ async function main() {
         titleEn: 'University merit student',
         titleRu: 'Отличник университета',
       },
+      {
+        id: randomUUID(),
+        profileUserId: approvedStudent.id,
+        titleZh: '省级创新竞赛二等奖',
+        titleEn: 'Provincial Innovation Contest - 2nd Prize',
+        titleRu: '2-е место в региональном инновационном конкурсе',
+      },
     ],
   });
 
   await prisma.skillTag.deleteMany({ where: { profileUserId: student.id } });
+  await prisma.skillTag.deleteMany({ where: { profileUserId: approvedStudent.id } });
+  await prisma.skillTag.deleteMany({ where: { profileUserId: rejectedStudent.id } });
   await prisma.skillTag.createMany({
     data: [
       {
@@ -432,6 +550,26 @@ async function main() {
         nameZh: 'TypeScript',
         nameEn: 'TypeScript',
         nameRu: 'TypeScript',
+      },
+      {
+        id: randomUUID(),
+        profileUserId: approvedStudent.id,
+        categoryZh: '组织',
+        categoryEn: 'Organization',
+        categoryRu: 'Организация',
+        nameZh: '项目统筹',
+        nameEn: 'Project Coordination',
+        nameRu: 'Координация проектов',
+      },
+      {
+        id: randomUUID(),
+        profileUserId: rejectedStudent.id,
+        categoryZh: '志愿',
+        categoryEn: 'Volunteer',
+        categoryRu: 'Волонтерство',
+        nameZh: '活动协助',
+        nameEn: 'Event Assistance',
+        nameRu: 'Помощь в мероприятиях',
       },
     ],
   });

@@ -20,12 +20,20 @@ export class ProfileService {
   async getOrCreate(userId: string) {
     let p = await this.prisma.profile.findUnique({
       where: { userId },
-      include: { awards: true, tags: true },
+      include: {
+        awards: true,
+        tags: true,
+        reviewedBy: { select: { id: true, name: true, email: true } },
+      },
     });
     if (!p) {
       p = await this.prisma.profile.create({
         data: { userId },
-        include: { awards: true, tags: true },
+        include: {
+          awards: true,
+          tags: true,
+          reviewedBy: { select: { id: true, name: true, email: true } },
+        },
       });
     }
     return p;
@@ -64,7 +72,28 @@ export class ProfileService {
         identityEn: dto.identityEn,
         identityRu: dto.identityRu,
       },
-      include: { awards: true, tags: true },
+      include: {
+        awards: true,
+        tags: true,
+        reviewedBy: { select: { id: true, name: true, email: true } },
+      },
+    });
+  }
+
+  async submitForReview(userId: string) {
+    await this.getOrCreate(userId);
+    return this.prisma.profile.update({
+      where: { userId },
+      data: {
+        reviewStatus: ProfileReviewStatus.PENDING,
+        rejectReason: null,
+        submittedAt: new Date(),
+      },
+      include: {
+        reviewedBy: {
+          select: { id: true, name: true, email: true },
+        },
+      },
     });
   }
 
@@ -376,7 +405,9 @@ export class ProfileService {
         user: { select: { id: true, name: true, email: true, studentId: true } },
         awards: true,
         tags: true,
+        reviewedBy: { select: { id: true, name: true, email: true } },
       },
+      orderBy: [{ submittedAt: 'asc' }, { updatedAt: 'asc' }],
     });
   }
 
@@ -412,13 +443,14 @@ export class ProfileService {
       },
       include: {
         user: { select: { id: true, name: true, email: true, studentId: true } },
+        reviewedBy: { select: { id: true, name: true, email: true } },
       },
-      orderBy: { updatedAt: 'desc' },
+      orderBy: [{ reviewedAt: 'desc' }, { updatedAt: 'desc' }],
       take: Math.max(1, Math.min(50, Number(limit) || 20)),
     });
   }
 
-  async review(userId: string, dto: { approve: boolean; reason?: string }) {
+  async review(userId: string, dto: { approve: boolean; reason?: string }, reviewerId: string) {
     const exists = await this.prisma.profile.findUnique({ where: { userId } });
     if (!exists) throw new NotFoundException();
     return this.prisma.profile.update({
@@ -426,27 +458,53 @@ export class ProfileService {
       data: {
         reviewStatus: dto.approve ? ProfileReviewStatus.APPROVED : ProfileReviewStatus.REJECTED,
         rejectReason: dto.approve ? null : dto.reason ?? 'Rejected',
+        reviewedAt: new Date(),
+        reviewedById: reviewerId,
       },
     });
   }
 
   async searchStudents(
-    keyword: string,
-    mode: 'name' | 'studentId' | 'idCard',
+    query: {
+      keyword?: string;
+      mode?: 'name' | 'studentId' | 'idCard';
+      name?: string;
+      studentId?: string;
+      idCard?: string;
+      phone?: string;
+      email?: string;
+    },
     operatorUserId: string,
     operatorRole: UserRole,
   ) {
-    if (operatorRole === UserRole.ORG_ADMIN && mode === 'idCard') {
+    const mode = query.mode ?? 'name';
+    if (operatorRole === UserRole.ORG_ADMIN && (mode === 'idCard' || !!query.idCard)) {
       throw new ForbiddenException('Org admin can only search by name or studentId');
     }
+    const keyword = query.keyword?.trim() ?? '';
+    const normalized = {
+      name: query.name?.trim() ?? '',
+      studentId: query.studentId?.trim() ?? '',
+      idCard: query.idCard?.trim() ?? '',
+      phone: query.phone?.trim() ?? '',
+      email: query.email?.trim() ?? '',
+    };
 
-    const value = keyword.trim();
-    const where =
-      mode === 'name'
-        ? { name: { contains: value, mode: 'insensitive' as const } }
-        : mode === 'studentId'
-          ? { studentId: { contains: value } }
-          : { idCard: { contains: value } };
+    const andFilters: Array<Record<string, unknown>> = [];
+    if (keyword) {
+      andFilters.push(
+        mode === 'name'
+          ? { name: { contains: keyword, mode: 'insensitive' as const } }
+          : mode === 'studentId'
+            ? { studentId: { contains: keyword } }
+            : { idCard: { contains: keyword } },
+      );
+    }
+    if (normalized.name) andFilters.push({ name: { contains: normalized.name, mode: 'insensitive' as const } });
+    if (normalized.studentId) andFilters.push({ studentId: { contains: normalized.studentId } });
+    if (normalized.phone) andFilters.push({ phone: { contains: normalized.phone } });
+    if (normalized.email) andFilters.push({ email: { contains: normalized.email, mode: 'insensitive' as const } });
+    if (normalized.idCard) andFilters.push({ idCard: { contains: normalized.idCard } });
 
     const managedOrgIds = operatorRole === UserRole.ORG_ADMIN
       ? await this.authorization.managedOrgIds(operatorUserId)
@@ -459,7 +517,7 @@ export class ProfileService {
         ...(operatorRole === UserRole.ORG_ADMIN
           ? { memberships: { some: { organizationId: { in: managedOrgIds } } } }
           : {}),
-        ...(value ? where : {}),
+        ...(andFilters.length ? { AND: andFilters } : {}),
       },
       orderBy: { createdAt: 'desc' },
       select: {
@@ -476,6 +534,12 @@ export class ProfileService {
         profile: {
           select: {
             reviewStatus: true,
+            rejectReason: true,
+            submittedAt: true,
+            reviewedAt: true,
+            reviewedBy: {
+              select: { id: true, name: true, email: true },
+            },
             updatedAt: true,
           },
         },
@@ -493,6 +557,10 @@ export class ProfileService {
       major: u.major,
       className: u.className,
       reviewStatus: u.profile?.reviewStatus ?? ProfileReviewStatus.PENDING,
+      rejectReason: u.profile?.rejectReason ?? null,
+      submittedAt: u.profile?.submittedAt ?? null,
+      reviewedAt: u.profile?.reviewedAt ?? null,
+      reviewedBy: u.profile?.reviewedBy ?? null,
       updatedAt: u.profile?.updatedAt ?? null,
     }));
   }
@@ -516,7 +584,18 @@ export class ProfileService {
     if (!user) throw new NotFoundException('User not found');
     if (user.isOrgAccount) throw new ForbiddenException('Organization account is not a student profile');
     const profile = await this.getOrCreate(userId);
-    return { user, profile };
+    const reviewHistory = await this.prisma.profile.findMany({
+      where: {
+        userId,
+        reviewStatus: { in: [ProfileReviewStatus.APPROVED, ProfileReviewStatus.REJECTED] },
+      },
+      include: {
+        reviewedBy: { select: { id: true, name: true, email: true } },
+      },
+      orderBy: [{ reviewedAt: 'desc' }, { updatedAt: 'desc' }],
+      take: 8,
+    });
+    return { user, profile, reviewHistory };
   }
 
   async adminUpdateUserProfile(
@@ -564,6 +643,8 @@ export class ProfileService {
         identityRu: dto.identityRu,
         reviewStatus: ProfileReviewStatus.APPROVED,
         rejectReason: null,
+        submittedAt: null,
+        reviewedAt: new Date(),
       },
     });
 

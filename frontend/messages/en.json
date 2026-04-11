@@ -44,7 +44,7 @@
       "orgs": "Organization management",
       "tasks": "League tasks",
       "timeline": "Campus schedule",
-      "profile": "Student profiles",
+      "profile": "Student archive center",
       "notifications": "Notifications"
     }
   },
@@ -99,7 +99,7 @@
       "timeline": "Personal plans, timetable, and upcoming items",
       "tasks": "Joined activities and progress tracking",
       "organizations": "View affiliated organizations",
-      "profile": "Basic info, awards, and skill tags",
+      "profile": "Archive center: basics, awards, and skill tags",
       "notifications": "System notices and reminders",
       "admin": "Pending reviews and league tools"
     },
@@ -337,7 +337,35 @@
     "awards": "Awards",
     "tags": "Skill tags",
     "pending": "Pending reviews",
-    "review": "Review"
+    "review": "Review",
+    "center": {
+      "subtitle": "Save profile drafts first, then submit for committee review with traceable feedback",
+      "overviewTitle": "My archive overview",
+      "overviewDesc": "Unified student archive center for evaluations and leadership selection",
+      "stats": {
+        "completeness": "Archive completeness",
+        "submittedAt": "Last submitted at",
+        "reviewedAt": "Last reviewed at",
+        "materials": "Archive materials",
+        "materialSplit": "Awards {awards} · Tags {tags}"
+      },
+      "suggestionsTitle": "Suggestions to complete",
+      "modules": {
+        "basic": "Basic information",
+        "identity": "Identity information",
+        "practice": "Volunteer and practice",
+        "tags": "Skill tag management",
+        "awards": "Awards management",
+        "feedback": "Review feedback"
+      },
+      "actions": {
+        "submitProfile": "Submit archive for review",
+        "submitGradeMajor": "Submit grade/major change request",
+        "saveDraft": "Save basic draft",
+        "submitTag": "Submit new tag request",
+        "submitAward": "Submit new award request"
+      }
+    }
   },
   "notifications": { "title": "Notifications", "markAll": "Mark all read" }
 }

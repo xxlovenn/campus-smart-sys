@@ -5,7 +5,6 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from '@/navigation';
 import { apiFetch } from '@/lib/api';
 import { confirmAction } from '@/lib/confirm';
-import { Modal } from '@/components/Modal';
 import { useAuthGuard } from '@/lib/use-auth-guard';
 
 type Me = { role: string };
@@ -14,6 +13,9 @@ type PendingProfile = {
   user: { id: string; name: string; email: string; studentId?: string | null };
   reviewStatus: string;
   rejectReason?: string | null;
+  submittedAt?: string | null;
+  reviewedAt?: string | null;
+  reviewedBy?: { id?: string; name?: string; email?: string } | null;
   updatedAt?: string;
 };
 type TaskRequest = {
@@ -108,10 +110,7 @@ export default function AdminPage() {
   const [meta, setMeta] = useState<MetaOptions>({ grades: [], majors: [] });
   const [newGrade, setNewGrade] = useState('');
   const [newMajor, setNewMajor] = useState('');
-  const [reason, setReason] = useState<Record<string, string>>({});
   const [taskRejectReason, setTaskRejectReason] = useState<Record<string, string>>({});
-  const [reviewTarget, setReviewTarget] = useState<PendingProfile | null>(null);
-  const [activeProfileId, setActiveProfileId] = useState<string>('');
   const [activeTaskId, setActiveTaskId] = useState<string>('');
   const [reviewView, setReviewView] = useState<'records' | 'timeline'>('records');
   const [err, setErr] = useState<string | null>(null);
@@ -124,9 +123,13 @@ export default function AdminPage() {
         title: `档案审核 · ${row.user.name}`,
         status,
         note: row.rejectReason || (status === 'APPROVED' ? '档案审核通过' : '档案审核驳回'),
-        actor: '团委管理员',
-        at: row.updatedAt,
-        ts: row.updatedAt ? new Date(row.updatedAt).getTime() : 0,
+        actor: row.reviewedBy?.name || row.reviewedBy?.email || '团委管理员',
+        at: row.reviewedAt ?? row.updatedAt,
+        ts: row.reviewedAt
+          ? new Date(row.reviewedAt).getTime()
+          : row.updatedAt
+            ? new Date(row.updatedAt).getTime()
+            : 0,
       };
     });
     const taskRows: ReviewTimelineItem[] = taskReviewRecords.map((row) => {
@@ -159,8 +162,8 @@ export default function AdminPage() {
           const statusA = a.reviewStatus === 'PENDING' ? 0 : 1;
           const statusB = b.reviewStatus === 'PENDING' ? 0 : 1;
           if (statusA !== statusB) return statusA - statusB;
-          const at = timeToMs(a.updatedAt);
-          const bt = timeToMs(b.updatedAt);
+          const at = timeToMs(a.submittedAt ?? a.updatedAt);
+          const bt = timeToMs(b.submittedAt ?? b.updatedAt);
           if (at === 0 || bt === 0) return at - bt;
           return at - bt;
         })
@@ -184,15 +187,15 @@ export default function AdminPage() {
   );
   const pendingQueue = useMemo<PendingQueueItem[]>(() => {
     const profileItems: PendingQueueItem[] = latestPendingProfiles.map((row) => {
-      const submitTs = timeToMs(row.updatedAt);
+      const submitTs = timeToMs(row.submittedAt ?? row.updatedAt);
       return {
         key: `profile-${row.userId}`,
         kind: 'profile',
-        title: `档案审核：${row.user.name}`,
+        title: `档案：${row.user.name}`,
         applicant: row.user.email,
-        submittedAt: row.updatedAt,
+        submittedAt: row.submittedAt ?? row.updatedAt,
         status: 'PENDING_APPROVAL',
-        waitText: waitingLabel(row.updatedAt),
+        waitText: waitingLabel(row.submittedAt ?? row.updatedAt),
         // earlier submit time => higher priority
         priorityScore: submitTs > 0 ? Date.now() - submitTs : 0,
         profileId: row.userId,
@@ -283,10 +286,10 @@ export default function AdminPage() {
       }
       const [pendingList, requests, options, profileReviewed, taskReviewed] = await Promise.all([
         apiFetch<PendingProfile[]>('/profile/admin/pending', { token }),
-        apiFetch<TaskRequest[]>('/tasks/admin/requests', { token }),
+        apiFetch<TaskRequest[]>('/tasks/admin/requests?stage=LEAGUE_REVIEW', { token }),
         apiFetch<MetaOptions>('/profile/admin/options', { token }),
         apiFetch<ProfileReviewRecord[]>('/profile/admin/review-records?limit=12', { token }),
-        apiFetch<TaskReviewRecord[]>('/tasks/admin/review-records?limit=12', { token }),
+        apiFetch<TaskReviewRecord[]>('/tasks/admin/review-records?limit=12&source=ORG_REQUEST', { token }),
       ]);
       setPending(Array.isArray(pendingList) ? pendingList : []);
       setTaskRequests(Array.isArray(requests) ? requests : []);
@@ -306,13 +309,10 @@ export default function AdminPage() {
   }, [load]);
 
   useEffect(() => {
-    if (!activeProfileId && pending.length > 0) {
-      setActiveProfileId(latestPendingProfiles[0]?.userId ?? pending[0].userId);
-    }
     if (!activeTaskId && taskRequests.length > 0) {
       setActiveTaskId(latestPendingTasks[0]?.id ?? taskRequests[0].id);
     }
-  }, [activeProfileId, activeTaskId, latestPendingProfiles, latestPendingTasks, pending, taskRequests]);
+  }, [activeTaskId, latestPendingTasks, taskRequests]);
 
   async function review(userId: string, approve: boolean) {
     if (!token) return;
@@ -320,9 +320,8 @@ export default function AdminPage() {
     await apiFetch(`/profile/admin/${userId}/review`, {
       method: 'PATCH',
       token,
-      body: JSON.stringify({ approve, reason: approve ? undefined : reason[userId] || 'Rejected' }),
+      body: JSON.stringify({ approve, reason: approve ? undefined : 'Rejected' }),
     });
-    setReviewTarget(null);
     load();
   }
 
@@ -378,7 +377,6 @@ export default function AdminPage() {
     }
   }
 
-  const activeProfile = pending.find((row) => row.userId === activeProfileId) ?? null;
   const activeTask = taskRequests.find((row) => row.id === activeTaskId) ?? null;
 
   if (!ready || !token) {
@@ -456,9 +454,11 @@ export default function AdminPage() {
             <button
               type="button"
               disabled={latestPendingProfiles.length === 0}
-              onClick={() => latestPendingProfiles[0] && setActiveProfileId(latestPendingProfiles[0].userId)}
+              onClick={() => {
+                document.getElementById('pending-review-section')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              }}
             >
-              跳到档案审核
+              跳到待处理事项
             </button>
             <button
               type="button"
@@ -470,7 +470,7 @@ export default function AdminPage() {
           </div>
         </section>
 
-        <section className="card-soft" style={{ display: 'grid', gap: 12 }}>
+        <section id="pending-review-section" className="card-soft" style={{ display: 'grid', gap: 12 }}>
           <h3 style={{ margin: 0 }}>待处理事项</h3>
           <div className="grid-two">
             <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
@@ -504,15 +504,6 @@ export default function AdminPage() {
                             <>
                               <button type="button" onClick={() => row.profileId && review(row.profileId, true)}>通过</button>
                               <button type="button" className="logout-btn" onClick={() => row.profileId && review(row.profileId, false)}>驳回</button>
-                              <button
-                                type="button"
-                                onClick={() => {
-                                  const target = pending.find((p) => p.userId === row.profileId);
-                                  if (target) setReviewTarget(target);
-                                }}
-                              >
-                                详情
-                              </button>
                             </>
                           ) : (
                             <>
@@ -554,101 +545,52 @@ export default function AdminPage() {
         </section>
 
         <section className="card-soft" style={{ display: 'grid', gap: 12 }}>
-          <h3 style={{ margin: 0 }}>审核操作区（备注辅助）</h3>
-          <div className="grid-two">
-            <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-              <strong>档案审核操作</strong>
-              <select value={activeProfileId} onChange={(e) => setActiveProfileId(e.target.value)}>
-                <option value="">请选择待审核档案</option>
-                {pending.map((row) => (
-                  <option key={row.userId} value={row.userId}>
-                    {row.user.name} · {row.user.studentId ?? '—'}
-                  </option>
-                ))}
-              </select>
-              <div className="topbar-muted">
-                当前对象：{activeProfile ? `${activeProfile.user.name}（${activeProfile.user.email}）` : '未选择'}
-              </div>
-              {activeProfile ? (
-                <div className="topbar-muted">
-                  学号：{activeProfile.user.studentId ?? '—'} · 提交时间：{formatDateTime(activeProfile.updatedAt)}
-                </div>
-              ) : null}
-              <textarea
-                placeholder="档案驳回备注（可选）"
-                value={activeProfileId ? (reason[activeProfileId] ?? '') : ''}
-                onChange={(e) =>
-                  activeProfileId
-                    ? setReason((s) => ({ ...s, [activeProfileId]: e.target.value }))
-                    : undefined
-                }
-                rows={3}
-              />
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button type="button" disabled={!activeProfileId} onClick={() => activeProfileId && review(activeProfileId, true)}>
-                  一键通过
-                </button>
-                <button
-                  type="button"
-                  className="logout-btn"
-                  disabled={!activeProfileId}
-                  onClick={() => activeProfileId && review(activeProfileId, false)}
-                >
-                  一键驳回
-                </button>
-                <button type="button" disabled={!activeProfile} onClick={() => activeProfile && setReviewTarget(activeProfile)}>
-                  查看详情
-                </button>
-              </div>
+          <h3 style={{ margin: 0 }}>活动申请审核（备注辅助）</h3>
+          <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
+            <select value={activeTaskId} onChange={(e) => setActiveTaskId(e.target.value)}>
+              <option value="">请选择待审核活动申请</option>
+              {taskRequests.map((row) => (
+                <option key={row.id} value={row.id}>
+                  {row.titleZh || row.titleEn || row.titleRu || '—'}
+                </option>
+              ))}
+            </select>
+            <div className="topbar-muted">
+              当前对象：{activeTask ? `${activeTask.creator?.name || activeTask.creator?.email || '—'}` : '未选择'}
             </div>
-
-            <div className="card-soft" style={{ display: 'grid', gap: 8 }}>
-              <strong>活动申请审核操作</strong>
-              <select value={activeTaskId} onChange={(e) => setActiveTaskId(e.target.value)}>
-                <option value="">请选择待审核活动申请</option>
-                {taskRequests.map((row) => (
-                  <option key={row.id} value={row.id}>
-                    {row.titleZh || row.titleEn || row.titleRu || '—'}
-                  </option>
-                ))}
-              </select>
-              <div className="topbar-muted">
-                当前对象：{activeTask ? `${activeTask.creator?.name || activeTask.creator?.email || '—'}` : '未选择'}
-              </div>
-              {activeTask ? (
-                <>
-                  <div className="topbar-muted">
-                    标题：{activeTask.titleZh || activeTask.titleEn || activeTask.titleRu || '—'}
-                  </div>
-                  <div className="topbar-muted">
-                    组织：{activeTask.primaryOrg?.nameZh || activeTask.primaryOrg?.nameEn || activeTask.primaryOrg?.nameRu || '—'} ·
-                    提交时间：{formatDateTime(activeTask.createdAt)}
-                  </div>
-                </>
-              ) : null}
-              <textarea
-                placeholder="活动申请驳回备注（可选）"
-                value={activeTaskId ? (taskRejectReason[activeTaskId] ?? '') : ''}
-                onChange={(e) =>
-                  activeTaskId
-                    ? setTaskRejectReason((s) => ({ ...s, [activeTaskId]: e.target.value }))
-                    : undefined
-                }
-                rows={3}
-              />
-              <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                <button type="button" disabled={!activeTaskId} onClick={() => activeTaskId && reviewTaskRequest(activeTaskId, true)}>
-                  一键通过
-                </button>
-                <button
-                  type="button"
-                  className="logout-btn"
-                  disabled={!activeTaskId}
-                  onClick={() => activeTaskId && reviewTaskRequest(activeTaskId, false)}
-                >
-                  一键驳回
-                </button>
-              </div>
+            {activeTask ? (
+              <>
+                <div className="topbar-muted">
+                  标题：{activeTask.titleZh || activeTask.titleEn || activeTask.titleRu || '—'}
+                </div>
+                <div className="topbar-muted">
+                  组织：{activeTask.primaryOrg?.nameZh || activeTask.primaryOrg?.nameEn || activeTask.primaryOrg?.nameRu || '—'} ·
+                  提交时间：{formatDateTime(activeTask.createdAt)}
+                </div>
+              </>
+            ) : null}
+            <textarea
+              placeholder="活动申请驳回备注（可选）"
+              value={activeTaskId ? (taskRejectReason[activeTaskId] ?? '') : ''}
+              onChange={(e) =>
+                activeTaskId
+                  ? setTaskRejectReason((s) => ({ ...s, [activeTaskId]: e.target.value }))
+                  : undefined
+              }
+              rows={3}
+            />
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button type="button" disabled={!activeTaskId} onClick={() => activeTaskId && reviewTaskRequest(activeTaskId, true)}>
+                一键通过
+              </button>
+              <button
+                type="button"
+                className="logout-btn"
+                disabled={!activeTaskId}
+                onClick={() => activeTaskId && reviewTaskRequest(activeTaskId, false)}
+              >
+                一键驳回
+              </button>
             </div>
           </div>
         </section>
@@ -796,36 +738,6 @@ export default function AdminPage() {
         </section>
       </div>
 
-      <Modal
-        open={!!reviewTarget}
-        title="档案审核详情"
-        onClose={() => setReviewTarget(null)}
-        width={720}
-      >
-        {reviewTarget ? (
-          <div style={{ display: 'grid', gap: 12 }}>
-            <div>
-              <strong>{reviewTarget.user.name}</strong> · {reviewTarget.user.email} ·{' '}
-              {reviewTarget.user.studentId ?? '—'}
-            </div>
-            <label style={{ display: 'grid', gap: 6 }}>
-              <span>驳回原因（可选）</span>
-              <input
-                value={reason[reviewTarget.userId] ?? ''}
-                onChange={(e) => setReason((s) => ({ ...s, [reviewTarget.userId]: e.target.value }))}
-              />
-            </label>
-            <div style={{ display: 'flex', gap: 10 }}>
-              <button type="button" onClick={() => review(reviewTarget.userId, true)}>
-                {tc('approve')}
-              </button>
-              <button type="button" className="logout-btn" onClick={() => review(reviewTarget.userId, false)}>
-                {tc('reject')}
-              </button>
-            </div>
-          </div>
-        ) : null}
-      </Modal>
     </div>
   );
 }

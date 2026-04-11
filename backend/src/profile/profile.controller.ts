@@ -119,6 +119,21 @@ class SearchStudentsQuery {
   @IsString()
   @IsIn(['name', 'studentId', 'idCard'])
   mode?: 'name' | 'studentId' | 'idCard';
+  @IsOptional()
+  @IsString()
+  name?: string;
+  @IsOptional()
+  @IsString()
+  studentId?: string;
+  @IsOptional()
+  @IsString()
+  idCard?: string;
+  @IsOptional()
+  @IsString()
+  phone?: string;
+  @IsOptional()
+  @IsString()
+  email?: string;
 }
 
 class AdminUpdateUserProfileDto {
@@ -183,6 +198,12 @@ export class ProfileController {
   @Patch('me')
   updateMe(@Req() req: { user: { id: string } }, @Body() body: UpdateProfileDto) {
     return this.profile.updateMe(req.user.id, body);
+  }
+
+  @UseGuards(JwtAuthGuard)
+  @Post('me/submit')
+  submitForReview(@Req() req: { user: { id: string } }) {
+    return this.profile.submitForReview(req.user.id);
   }
 
   @UseGuards(JwtAuthGuard)
@@ -254,8 +275,12 @@ export class ProfileController {
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles(UserRole.LEAGUE_ADMIN)
   @Patch('admin/:userId/review')
-  review(@Param('userId') userId: string, @Body() body: ReviewDto) {
-    return this.profile.review(userId, body);
+  review(
+    @Param('userId') userId: string,
+    @Body() body: ReviewDto,
+    @Req() req: { user: { id: string } },
+  ) {
+    return this.profile.review(userId, body, req.user.id);
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)
@@ -320,7 +345,19 @@ export class ProfileController {
     @Query() query: SearchStudentsQuery,
   ) {
     const mode = query.mode ?? 'name';
-    return this.profile.searchStudents(query.keyword ?? '', mode, req.user.id, req.user.role);
+    return this.profile.searchStudents(
+      {
+        keyword: query.keyword ?? '',
+        mode,
+        name: query.name,
+        studentId: query.studentId,
+        idCard: query.idCard,
+        phone: query.phone,
+        email: query.email,
+      },
+      req.user.id,
+      req.user.role,
+    );
   }
 
   @UseGuards(JwtAuthGuard, RolesGuard)

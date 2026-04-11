@@ -878,3 +878,52 @@
   padding: 16px;
   overflow: auto;
 }
+
+.task-flow-board {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.task-flow-column {
+  background: #fff;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 10px;
+  min-height: 260px;
+}
+
+.task-flow-column-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.task-flow-list {
+  display: grid;
+  gap: 8px;
+}
+
+.task-flow-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  background: var(--panel-soft);
+}
+
+.task-flow-empty {
+  color: var(--muted);
+  font-size: 13px;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  padding: 10px;
+  text-align: center;
+  background: #fafafa;
+}
+
+@media (max-width: 960px) {
+  .task-flow-board {
+    grid-template-columns: 1fr;
+  }
+}

@@ -703,6 +703,17 @@ export class TasksService {
       throw new ForbiddenException('Only approved activities can update progress');
     }
 
+    const from = task.status as TaskStatus;
+    const same = from === status;
+    const allowedNext =
+      (from === TaskStatus.TODO && status === TaskStatus.IN_PROGRESS) ||
+      (from === TaskStatus.IN_PROGRESS && status === TaskStatus.DONE) ||
+      (from === TaskStatus.DONE && status === TaskStatus.TODO) ||
+      (from === TaskStatus.BLOCKED && status === TaskStatus.IN_PROGRESS);
+    if (!same && !allowedNext) {
+      throw new BadRequestException('Invalid status transition: TODO -> IN_PROGRESS -> DONE');
+    }
+
     if (role === UserRole.LEAGUE_ADMIN) {
       return this.prisma.task.update({ where: { id: taskId }, data: { status } });
     }

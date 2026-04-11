@@ -121,6 +121,13 @@ function approvalLabel(approval?: string) {
   return '待审核';
 }
 
+function taskStatusLabel(status?: string) {
+  if (status === 'IN_PROGRESS') return '进行中';
+  if (status === 'DONE') return '已完成';
+  if (status === 'BLOCKED') return '受阻';
+  return '待处理';
+}
+
 function sourceLabel(task: Task, locale: string, isOrgAdmin: boolean) {
   if (task.source === 'LEAGUE_PUBLISHED') return '团委发布';
   if (isOrgAdmin) return '本社团';
@@ -468,6 +475,14 @@ export default function TasksPage() {
     () => orgScopedTasks.filter((task) => task.approvalStatus === 'APPROVED'),
     [orgScopedTasks],
   );
+  const orgKanban = useMemo(
+    () => ({
+      todo: orgArrangedTasks.filter((task) => task.status === 'TODO'),
+      inProgress: orgArrangedTasks.filter((task) => task.status === 'IN_PROGRESS'),
+      done: orgArrangedTasks.filter((task) => task.status === 'DONE'),
+    }),
+    [orgArrangedTasks],
+  );
   const orgReviewingTasks = useMemo(
     () =>
       orgScopedTasks.filter(
@@ -593,6 +608,99 @@ export default function TasksPage() {
       </div>
     </div>
   );
+
+  const renderOrgKanban = () => {
+    const columns: Array<{ key: 'todo' | 'inProgress' | 'done'; title: string; list: Task[] }> = [
+      { key: 'todo', title: '待处理', list: orgKanban.todo },
+      { key: 'inProgress', title: '进行中', list: orgKanban.inProgress },
+      { key: 'done', title: '已完成', list: orgKanban.done },
+    ];
+
+    return (
+      <div className="page-section">
+        <div className="card-soft">
+          <h2 style={{ marginBottom: 12 }}>已安排（任务流转看板）</h2>
+          <p className="topbar-muted" style={{ marginBottom: 14 }}>
+            流转路径：待处理 → 进行中 → 已完成
+          </p>
+
+          <div className="task-flow-board">
+            {columns.map((col) => (
+              <div key={col.key} className="task-flow-column">
+                <div className="task-flow-column-head">
+                  <strong>{col.title}</strong>
+                  <span className="topbar-muted">{col.list.length}</span>
+                </div>
+                <div className="task-flow-list">
+                  {col.list.length === 0 ? (
+                    <div className="task-flow-empty">暂无任务</div>
+                  ) : (
+                    col.list.map((task) => {
+                      const creator = task.creator as Record<string, unknown> | undefined;
+                      const assignee = task.assignee as Record<string, unknown> | undefined;
+                      const managed = inManagedScope(task, managedOrgIds);
+                      const mutableByOrgAdmin = managed && task.source === 'ORG_REQUEST';
+                      const canChangeStatus =
+                        task.approvalStatus === 'APPROVED' &&
+                        (isLeagueAdmin || (isOrgAdmin ? mutableByOrgAdmin : false));
+
+                      return (
+                        <article key={task.id} className="task-flow-card">
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8, flexWrap: 'wrap' }}>
+                            <strong>{triField(task, 'title', locale)}</strong>
+                            <span className={statusBadgeClass(task.status)}>{taskStatusLabel(task.status)}</span>
+                          </div>
+                          <div className="topbar-muted" style={{ marginTop: 6, fontSize: 13 }}>
+                            负责人：{String(assignee?.name ?? assignee?.email ?? creator?.name ?? creator?.email ?? '未指定')}
+                          </div>
+                          <div className="topbar-muted" style={{ marginTop: 4, fontSize: 13 }}>
+                            截止：{formatDateTime(task.endAt ?? task.dueAt)}
+                          </div>
+                          <div className="topbar-muted" style={{ marginTop: 4, fontSize: 13 }}>
+                            当前状态：{taskStatusLabel(task.status)}
+                          </div>
+
+                          <div style={{ display: 'flex', gap: 8, marginTop: 10, flexWrap: 'wrap' }}>
+                            {task.status === 'TODO' ? (
+                              <button
+                                type="button"
+                                onClick={() => setStatus(task.id, 'IN_PROGRESS')}
+                                disabled={!canChangeStatus}
+                              >
+                                开始处理
+                              </button>
+                            ) : null}
+                            {task.status === 'IN_PROGRESS' ? (
+                              <button
+                                type="button"
+                                onClick={() => setStatus(task.id, 'DONE')}
+                                disabled={!canChangeStatus}
+                              >
+                                标记完成
+                              </button>
+                            ) : null}
+                            {task.status === 'DONE' ? (
+                              <button
+                                type="button"
+                                onClick={() => setStatus(task.id, 'TODO')}
+                                disabled={!canChangeStatus}
+                              >
+                                重新打开
+                              </button>
+                            ) : null}
+                          </div>
+                        </article>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <div className="page-container">
@@ -894,7 +1002,7 @@ export default function TasksPage() {
 
         {isOrgAdmin ? (
           <>
-            {renderTaskList('已安排', orgArrangedTasks, '暂无已安排活动/任务')}
+            {renderOrgKanban()}
             {renderTaskList('正在审核', orgReviewingTasks, '暂无审核中的活动申请')}
           </>
         ) : (

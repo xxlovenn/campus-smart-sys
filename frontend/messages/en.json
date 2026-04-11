@@ -170,6 +170,38 @@
       "emptyDesc": "Go to task center to create or review task data first.",
       "emptyAction": "Open task center"
     },
+    "studentHome": {
+      "partialLoad": "Some student assistant data is temporarily unavailable",
+      "courses": {
+        "title": "Today's Classes",
+        "empty": "No class schedule for today"
+      },
+      "tasks": {
+        "title": "Today's Tasks (Priority Order)",
+        "empty": "No high-priority tasks for today",
+        "priority": {
+          "high": "High",
+          "medium": "Medium",
+          "low": "Low"
+        }
+      },
+      "ai": {
+        "title": "AI Suggestions",
+        "empty": "No suggestions right now",
+        "deadlineFirst": "Handle {count} near-deadline items first to avoid pile-up.",
+        "taskFirst": "Start with \"{task}\" and then move to secondary items.",
+        "courseFirst": "Prepare for \"{course}\" first, then switch to deep work tasks.",
+        "focus": "Finish one high-priority task first, then process messages and minor items."
+      },
+      "deadlines": {
+        "title": "Upcoming Deadlines",
+        "empty": "No urgent deadlines in the next 48 hours",
+        "plan": "Personal plan",
+        "task": "Task item",
+        "overdue": "Overdue",
+        "dueAt": "Due {time}"
+      }
+    },
     "viz": {
       "states": {
         "loading": "Loading visualization data...",

@@ -167,6 +167,38 @@
       "emptyDesc": "你可以先进入任务中心创建或查看任务数据。",
       "emptyAction": "进入任务中心"
     },
+    "studentHome": {
+      "partialLoad": "学生助手部分数据暂不可用",
+      "courses": {
+        "title": "今日课程",
+        "empty": "今天暂无课程安排"
+      },
+      "tasks": {
+        "title": "今日任务（按优先级）",
+        "empty": "今天暂无需要优先处理的任务",
+        "priority": {
+          "high": "高优先级",
+          "medium": "中优先级",
+          "low": "低优先级"
+        }
+      },
+      "ai": {
+        "title": "AI 建议",
+        "empty": "当前暂无建议",
+        "deadlineFirst": "今天先处理 {count} 个即将截止事项，避免堆积。",
+        "taskFirst": "优先推进任务「{task}」，完成后再处理次要事项。",
+        "courseFirst": "先完成课程「{course}」相关准备，再进入深度任务。",
+        "focus": "建议先完成一项高优任务，再统一处理消息和次要事项。"
+      },
+      "deadlines": {
+        "title": "即将截止提醒",
+        "empty": "近 48 小时暂无紧急截止事项",
+        "plan": "个人计划",
+        "task": "任务事项",
+        "overdue": "已逾期",
+        "dueAt": "截止 {time}"
+      }
+    },
     "viz": {
       "states": {
         "loading": "可视化数据加载中...",

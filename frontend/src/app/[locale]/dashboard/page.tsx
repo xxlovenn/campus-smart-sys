@@ -29,8 +29,40 @@ type TaskOverview = {
   tasks?: TaskOverviewTask[];
 };
 type DashboardTaskRow = {
+  id: string;
+  titleZh?: string;
+  titleEn?: string;
+  titleRu?: string;
   status?: string;
   approvalStatus?: string;
+  startAt?: string | null;
+  endAt?: string | null;
+  dueAt?: string | null;
+};
+type ScheduleEntry = {
+  id: string;
+  weekday?: number;
+  startTime?: string;
+  endTime?: string;
+  courseZh?: string;
+  courseEn?: string;
+  courseRu?: string;
+  locationZh?: string;
+  locationEn?: string;
+  locationRu?: string;
+};
+type ScheduleResponse = { entries?: ScheduleEntry[] };
+type ReminderPlanRow = {
+  id: string;
+  titleZh?: string;
+  titleEn?: string;
+  titleRu?: string;
+  dueAt?: string | null;
+};
+type UpcomingReminders = {
+  plans?: ReminderPlanRow[];
+  tasks?: DashboardTaskRow[];
+  windowDays?: number;
 };
 type ReviewStats = {
   pending: number;
@@ -43,6 +75,20 @@ type VizSegment = {
   label: string;
   value: number;
   tone: SegmentTone;
+};
+type StudentTaskCardRow = {
+  id: string;
+  title: string;
+  dueAt: string | null;
+  score: number;
+  priority: 'HIGH' | 'MEDIUM' | 'LOW';
+};
+type StudentDeadlineRow = {
+  id: string;
+  title: string;
+  dueAt: string;
+  type: 'plan' | 'task';
+  overdue: boolean;
 };
 
 type QuickKey = 'timeline' | 'tasks' | 'organizations' | 'profile' | 'notifications' | 'admin';
@@ -145,6 +191,27 @@ function toneClass(tone: SegmentTone) {
   return 'dashboard-viz-segment-indigo';
 }
 
+function parseDateValue(value: string | null | undefined) {
+  if (!value) return null;
+  const d = new Date(value);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function isSameDay(date: Date, target: Date) {
+  return (
+    date.getFullYear() === target.getFullYear() &&
+    date.getMonth() === target.getMonth() &&
+    date.getDate() === target.getDate()
+  );
+}
+
+function formatDateTimeShort(value: string | null | undefined) {
+  const d = parseDateValue(value);
+  if (!d) return '—';
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function DashboardPage() {
   const locale = useLocale();
   const t = useTranslations('dashboard');
@@ -159,6 +226,9 @@ export default function DashboardPage() {
   const [err, setErr] = useState<string | null>(null);
   const [overviewErr, setOverviewErr] = useState<string | null>(null);
   const [reviewErr, setReviewErr] = useState<string | null>(null);
+  const [studentDataErr, setStudentDataErr] = useState<string | null>(null);
+  const [scheduleEntries, setScheduleEntries] = useState<ScheduleEntry[]>([]);
+  const [upcomingReminders, setUpcomingReminders] = useState<UpcomingReminders | null>(null);
   const [reloadTick, setReloadTick] = useState(0);
 
   useEffect(() => {
@@ -169,6 +239,9 @@ export default function DashboardPage() {
       setReviewStats(null);
       setOverviewErr(null);
       setReviewErr(null);
+      setStudentDataErr(null);
+      setScheduleEntries([]);
+      setUpcomingReminders(null);
       setLoadingData(false);
       return;
     }
@@ -180,6 +253,7 @@ export default function DashboardPage() {
       setErr(null);
       setOverviewErr(null);
       setReviewErr(null);
+      setStudentDataErr(null);
       try {
         const user = await apiFetch<Me>('/users/me', { token });
         if (!active) return;
@@ -192,6 +266,39 @@ export default function DashboardPage() {
           }
         } catch {
           if (active) setTasks([]);
+        }
+
+        if (user.role === 'STUDENT') {
+          const [scheduleRes, reminderRes] = await Promise.allSettled([
+            apiFetch<ScheduleResponse>('/schedule', { token }),
+            apiFetch<UpcomingReminders>('/reminders/upcoming', { token }),
+          ]);
+          if (!active) return;
+
+          if (scheduleRes.status === 'fulfilled') {
+            const entries = Array.isArray(scheduleRes.value?.entries) ? scheduleRes.value.entries : [];
+            setScheduleEntries(entries);
+          } else {
+            setScheduleEntries([]);
+            setStudentDataErr(
+              scheduleRes.reason instanceof Error
+                ? scheduleRes.reason.message
+                : t('studentHome.partialLoad'),
+            );
+          }
+
+          if (reminderRes.status === 'fulfilled') {
+            setUpcomingReminders(reminderRes.value);
+          } else {
+            setUpcomingReminders({ plans: [], tasks: [], windowDays: 7 });
+            setStudentDataErr((prev) =>
+              prev || (reminderRes.reason instanceof Error ? reminderRes.reason.message : t('studentHome.partialLoad')),
+            );
+          }
+        } else if (active) {
+          setStudentDataErr(null);
+          setScheduleEntries([]);
+          setUpcomingReminders(null);
         }
 
         if (user.role === 'LEAGUE_ADMIN') {
@@ -271,6 +378,7 @@ export default function DashboardPage() {
   const roleSummary = useMemo(() => t(roleSummaryKey(me?.role)), [me?.role, t]);
   const coreQuickKeys = useMemo(() => quickKeys.slice(0, 3), [quickKeys]);
   const extraQuickKeys = useMemo(() => quickKeys.slice(3), [quickKeys]);
+  const isStudent = me?.role === 'STUDENT';
   const isLeagueAdmin = me?.role === 'LEAGUE_ADMIN';
   const metrics = useMemo(() => {
     if (me?.role === 'LEAGUE_ADMIN' && overview) {
@@ -345,6 +453,119 @@ export default function DashboardPage() {
       .sort((a, b) => b.count - a.count)
       .slice(0, 6);
   }, [isLeagueAdmin, locale, overviewTasks, t]);
+  const todayCourses = useMemo(() => {
+    if (!isStudent) return [];
+    const weekday = new Date().getDay() || 7;
+    return scheduleEntries
+      .filter((row) => row.weekday === weekday)
+      .sort((a, b) => String(a.startTime ?? '').localeCompare(String(b.startTime ?? '')))
+      .slice(0, 6);
+  }, [isStudent, scheduleEntries]);
+  const todayTaskCards = useMemo<StudentTaskCardRow[]>(() => {
+    if (!isStudent) return [];
+    const now = new Date();
+    const scoreFor = (task: DashboardTaskRow) => {
+      const due = parseDateValue(task.endAt ?? task.dueAt ?? task.startAt ?? null);
+      let score = 0;
+      if (task.status === 'IN_PROGRESS') score += 45;
+      else if (task.status === 'TODO') score += 30;
+      else if (task.status === 'BLOCKED') score += 20;
+      else if (task.status === 'DONE') score -= 25;
+      if (task.approvalStatus === 'PENDING_APPROVAL') score -= 10;
+      if (due) {
+        const diff = due.getTime() - now.getTime();
+        if (diff < 0) score += 60;
+        else if (isSameDay(due, now)) score += 45;
+        else if (diff <= 24 * 60 * 60 * 1000) score += 35;
+      }
+      return score;
+    };
+
+    const rows = tasks
+      .map((task) => {
+        const due = parseDateValue(task.endAt ?? task.dueAt ?? task.startAt ?? null);
+        const score = scoreFor(task);
+        const priority: StudentTaskCardRow['priority'] =
+          score >= 80 ? 'HIGH' : score >= 45 ? 'MEDIUM' : 'LOW';
+        return {
+          id: task.id,
+          title: triField(task as unknown as Record<string, unknown>, 'title', locale) || t('quickEntry'),
+          dueAt: due ? due.toISOString() : null,
+          score,
+          priority,
+        };
+      })
+      .sort((a, b) => b.score - a.score || String(a.dueAt ?? '').localeCompare(String(b.dueAt ?? '')));
+
+    const todayOnly = rows.filter((row) => {
+      const due = parseDateValue(row.dueAt);
+      return due ? isSameDay(due, now) : false;
+    });
+    return (todayOnly.length > 0 ? todayOnly : rows).slice(0, 5);
+  }, [isStudent, locale, tasks, t]);
+  const studentDeadlines = useMemo<StudentDeadlineRow[]>(() => {
+    if (!isStudent) return [];
+    const now = Date.now();
+    const horizon = now + 48 * 60 * 60 * 1000;
+    const planRows: StudentDeadlineRow[] = (upcomingReminders?.plans ?? []).flatMap((row) => {
+        const due = parseDateValue(row.dueAt ?? null);
+        if (!due) return [];
+        return [
+          {
+            id: `plan-${row.id}`,
+            title: triField(row as unknown as Record<string, unknown>, 'title', locale) || t('quickEntry'),
+            dueAt: due.toISOString(),
+            type: 'plan' as const,
+            overdue: due.getTime() < now,
+          },
+        ];
+      });
+    const taskRows: StudentDeadlineRow[] = (upcomingReminders?.tasks ?? []).flatMap((row) => {
+        const due = parseDateValue(row.endAt ?? row.dueAt ?? row.startAt ?? null);
+        if (!due) return [];
+        return [
+          {
+            id: `task-${row.id}`,
+            title: triField(row as unknown as Record<string, unknown>, 'title', locale) || t('quickEntry'),
+            dueAt: due.toISOString(),
+            type: 'task' as const,
+            overdue: due.getTime() < now,
+          },
+        ];
+      });
+
+    return [...planRows, ...taskRows]
+      .filter((row) => {
+        const due = parseDateValue(row.dueAt);
+        if (!due) return false;
+        const ts = due.getTime();
+        return ts <= horizon;
+      })
+      .sort((a, b) => String(a.dueAt).localeCompare(String(b.dueAt)))
+      .slice(0, 5);
+  }, [isStudent, locale, t, upcomingReminders]);
+  const aiSuggestions = useMemo(() => {
+    if (!isStudent) return [];
+    const rows: string[] = [];
+    if (studentDeadlines.length > 0) {
+      rows.push(t('studentHome.ai.deadlineFirst', { count: studentDeadlines.length }));
+    }
+    if (todayTaskCards.length > 0) {
+      rows.push(t('studentHome.ai.taskFirst', { task: todayTaskCards[0].title }));
+    }
+    if (todayCourses.length > 0) {
+      rows.push(
+        t('studentHome.ai.courseFirst', {
+          course:
+            triField(todayCourses[0] as unknown as Record<string, unknown>, 'course', locale) || t('title'),
+        }),
+      );
+    }
+    if (rows.length === 0) {
+      rows.push(t('studentHome.ai.focus'));
+    }
+    return rows.slice(0, 3);
+  }, [isStudent, locale, studentDeadlines.length, t, todayCourses, todayTaskCards]);
 
   const statCards = useMemo(() => {
     if (me?.role === 'LEAGUE_ADMIN') {
@@ -534,6 +755,103 @@ export default function DashboardPage() {
             {t('states.partialData')}: {err}
           </p>
         )}
+        {studentDataErr && isStudent ? (
+          <p className="dashboard-state-note">{t('studentHome.partialLoad')}: {studentDataErr}</p>
+        ) : null}
+        {isStudent ? (
+          <div className="dashboard-student-grid">
+            <div className="dashboard-student-card">
+              <div className="dashboard-student-card-title">{t('studentHome.courses.title')}</div>
+              {todayCourses.length === 0 ? (
+                <p className="topbar-muted">{t('studentHome.courses.empty')}</p>
+              ) : (
+                <ul className="dashboard-student-list">
+                  {todayCourses.map((row) => (
+                    <li key={row.id} className="dashboard-student-item">
+                      <div>
+                        <strong>
+                          {triField(row as unknown as Record<string, unknown>, 'course', locale) || t('title')}
+                        </strong>
+                        <div className="topbar-muted" style={{ marginTop: 3, fontSize: 12 }}>
+                          {triField(row as unknown as Record<string, unknown>, 'location', locale) || '—'}
+                        </div>
+                      </div>
+                      <span className="dashboard-student-time">{`${row.startTime ?? '--:--'}-${row.endTime ?? '--:--'}`}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="dashboard-student-card">
+              <div className="dashboard-student-card-title">{t('studentHome.tasks.title')}</div>
+              {todayTaskCards.length === 0 ? (
+                <p className="topbar-muted">{t('studentHome.tasks.empty')}</p>
+              ) : (
+                <ul className="dashboard-student-list">
+                  {todayTaskCards.map((row) => (
+                    <li key={row.id} className="dashboard-student-item">
+                      <div>
+                        <strong>{row.title}</strong>
+                        <div className="topbar-muted" style={{ marginTop: 3, fontSize: 12 }}>
+                          {t('common.due')}: {formatDateTimeShort(row.dueAt)}
+                        </div>
+                      </div>
+                      <span
+                        className={`dashboard-priority-pill dashboard-priority-${row.priority.toLowerCase()}`}
+                      >
+                        {t(`studentHome.tasks.priority.${row.priority.toLowerCase()}`)}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="dashboard-student-card">
+              <div className="dashboard-student-card-title">{t('studentHome.ai.title')}</div>
+              {aiSuggestions.length === 0 ? (
+                <p className="topbar-muted">{t('studentHome.ai.empty')}</p>
+              ) : (
+                <ul className="dashboard-student-list">
+                  {aiSuggestions.map((row, idx) => (
+                    <li key={`${idx}-${row}`} className="dashboard-student-item">
+                      <span className="dashboard-ai-index">{idx + 1}</span>
+                      <span>{row}</span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+
+            <div className="dashboard-student-card dashboard-student-card-alert">
+              <div className="dashboard-student-card-title">{t('studentHome.deadlines.title')}</div>
+              {studentDeadlines.length === 0 ? (
+                <p className="topbar-muted">{t('studentHome.deadlines.empty')}</p>
+              ) : (
+                <ul className="dashboard-student-list">
+                  {studentDeadlines.map((row) => (
+                    <li key={row.id} className="dashboard-student-item">
+                      <div>
+                        <strong>{row.title}</strong>
+                        <div className="topbar-muted" style={{ marginTop: 3, fontSize: 12 }}>
+                          {row.type === 'plan'
+                            ? t('studentHome.deadlines.plan')
+                            : t('studentHome.deadlines.task')}
+                        </div>
+                      </div>
+                      <div className="dashboard-deadline-text">
+                        {row.overdue
+                          ? t('studentHome.deadlines.overdue')
+                          : t('studentHome.deadlines.dueAt', { time: formatDateTimeShort(row.dueAt) })}
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          </div>
+        ) : null}
       </div>
 
       <div className="page-section">

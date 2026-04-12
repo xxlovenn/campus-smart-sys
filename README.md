@@ -25,7 +25,6 @@
 ## 🏆 赛事要求对应关系
 
 ### （一）学生时间与任务管理模块
-
 - 统一时间轴视图（课程 / 任务 / 计划 / 校园事项）
 - 多维度时间信息整合展示
 - 个人计划与任务自主管理
@@ -36,19 +35,17 @@
 ---
 
 ### （二）组织 OA 与任务流转系统
-
 - 组织任务创建、分配与流转
 - 团委全局任务看板
 - 多组织协同管理
-- 任务状态统一管理
+- 任务状态统一（待处理 / 进行中 / 已完成）
 
 ---
 
 ### （三）学生个人档案中心
-
 - 基础信息与身份信息管理
 - 能力标签与奖项荣誉管理
-- 档案审核、驳回与备案
+- 档案审核、驳回与备案机制
 - 支撑评优评先与学生骨干选拔
 
 ---
@@ -57,7 +54,7 @@
 
 > 请将截图放入：`docs/screenshots/`
 
-### 🏠 学生端：首页
+### 🏠 学生端：首页（Dashboard）
 ![dashboard](./docs/screenshots/dashboard.png)
 
 ---
@@ -67,9 +64,9 @@
 
 👉 统一整合：
 - 课表
-- 个人任务
-- 个人计划
-- 校园统筹事项
+- 任务
+- 计划
+- 校园事项
 
 ---
 
@@ -99,21 +96,26 @@
 账号：`student@campus.demo`
 
 展示：
-- Dashboard
+- 首页 Dashboard
 - 今日任务 / 今日课程
 
 ---
 
-### Step 2：时间与任务中心
-重点讲：
+### Step 2：时间与任务中心（核心）
+展示：
 
-> 所有时间数据统一到时间轴（课表 + 任务 + 计划）
+> 课表 + 任务 + 计划统一在时间轴
+
+强调：
+
+> 实现多源数据统一视图
 
 ---
 
 ### Step 3：创建任务
 - 新建任务
 - 标记完成
+
 👉 自动同步时间轴
 
 ---
@@ -125,7 +127,7 @@
 
 说明：
 
-> 用于评优评先的数据沉淀
+> 支撑评优评先的数据沉淀
 
 ---
 
@@ -145,10 +147,12 @@
 ### Step 7：返回学生端
 展示：
 - 审核结果变化
+- 驳回原因反馈
 
 ---
 
-### Step 8：三语言切换
+### Step 8（加分）
+三语言切换：
 - 中文 / English / Русский
 
 ---
@@ -164,14 +168,20 @@
 覆盖：
 - 页面内容
 - 按钮
-- 状态
+- 状态标签
 - 提示信息
 
 ---
 
-## 🧠 模拟 API 与样本数据
+## 🧠 模拟 API 与样本数据说明
 
-由于学校未提供真实接口，本系统采用：
+由于学校暂未提供：
+
+- 课表 API
+- 志愿服务 API
+- 综合实践 API
+
+本项目采用：
 
 > ✅ 模拟 API + 样本数据
 
@@ -184,8 +194,8 @@
 
 目标：
 
-- 数据互通
-- 可接入真实 API
+- 实现模块数据互通
+- 可扩展真实 API
 - 避免数据孤岛
 
 ---
@@ -199,7 +209,7 @@
 
 ### 后端
 - NestJS
-- Prisma
+- Prisma ORM
 - PostgreSQL
 
 ### 部署
@@ -211,16 +221,82 @@
 
 ### 1️⃣ 前置条件
 
-- Docker ≥ 20.x
-- Docker Compose ≥ v2
-- 网络正常
+- Docker Desktop（或 Docker Engine）可用
+- Docker Compose v2 可用（支持 `docker compose`）
+- 网络正常（首次构建镜像需要下载依赖）
 
 ---
 
-### 2️⃣ 启动步骤
+### 2️⃣ 一键部署脚本（推荐）
+
+#### Windows（PowerShell）
+
+```powershell
+./start.ps1
+```
+
+#### Linux / macOS（Bash）
 
 ```bash
-git clone https://github.com/xxlovenn/campus-smart-sys.git
-cd campus-smart-sys
+chmod +x ./start.sh
+./start.sh
+```
+
+脚本将自动执行：
+
+- 检查 Docker / Docker Compose
+- 启动并构建容器：`docker compose up -d --build`
+- 等待 `backend` 与 `frontend` 健康检查通过
+
+---
+
+### 3️⃣ 手动启动（备用）
+
+```bash
 docker compose up -d --build
-docker compose exec backend npm run db:init
+```
+
+---
+
+### 4️⃣ 访问地址
+
+- 前端：<http://localhost:3000>
+- 后端健康检查：<http://localhost:3001/api/health>
+
+---
+
+### 5️⃣ 默认测试账号
+
+| 角色 | 邮箱 | 功能说明 |
+|---|---|---|
+| 学生 | `student@campus.demo` | 时间轴 / 档案 |
+| 社团负责人 | `org@campus.demo` | 组织任务 |
+| 团委管理员 | `league@campus.demo` | 审核后台 |
+
+统一密码：`demo123456`
+
+---
+
+### 6️⃣ 常见问题
+
+- Docker 无法启动：请先确认 Docker Desktop 正常运行
+- 页面无法访问：执行 `docker compose ps` 查看容器状态
+- 数据为空：执行 `docker compose exec backend npm run db:init`
+
+---
+
+### 7️⃣ 其他说明
+
+- 前端统一通过 `/api` 访问后端
+- 当前数据为模拟数据（符合赛事要求）
+- 支持后续接入真实校园 API
+
+---
+
+## 🧠 项目亮点
+
+- 🔥 统一时间轴整合多源数据
+- 🔥 学生档案中心 + 审核闭环
+- 🔥 三端协同（学生 / 社团 / 团委）
+- 🔥 三语言国际化
+- 🔥 Docker 一键部署

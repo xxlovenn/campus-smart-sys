@@ -70,6 +70,10 @@
     "refresh": "Refresh",
     "status": "Status",
     "due": "Due",
+    "currentDateTime": "Current Date & Time",
+    "timeDisplay": "Display",
+    "timeModeCompact": "Compact",
+    "timeModeFull": "Full",
     "loading": "Loading…",
     "error": "Error",
     "language": "Language",
@@ -261,6 +265,7 @@
       },
       "ai": {
         "title": "AI Suggestions",
+        "hint": "Generated from deadlines, task status, and class rhythm. Focus on the first two items first.",
         "empty": "No suggestions right now",
         "deadlineFirst": "Handle {count} near-deadline items first to avoid pile-up.",
         "taskFirst": "Start with \"{task}\" and then move to secondary items.",
@@ -322,7 +327,14 @@
     "labels": {
       "plan": "Plan",
       "task": "Task",
+      "activity": "Activity",
       "note": "Note"
+    },
+    "sources": {
+      "schedule": "Course Schedule",
+      "plan": "Personal Plans",
+      "campusTask": "Campus Tasks",
+      "orgActivity": "Org Activities"
     },
     "range": {
       "day": "Day",
@@ -435,7 +447,10 @@
       "submitReview": "Failed to submit for review",
       "deleteRequest": "Failed to submit delete request",
       "review": "Review failed",
-      "query": "Query failed"
+      "query": "Query failed",
+      "requiredBasic": "Please complete basic information (name, student ID, phone, email)",
+      "requiredIdentity": "Please complete identity information (ethnicity, ID number, political status, native place)",
+      "requiredPractice": "Please complete volunteer and practice information (start date, volunteer number, hours, service direction, practice summary)"
     },
     "confirm": {
       "saveBasic": "Save basic information?",
@@ -455,7 +470,8 @@
       "identity": "Add identity details to help committee verification.",
       "awards": "Recommend submitting at least one award record.",
       "tags": "Recommend adding skill tags to highlight strengths.",
-      "github": "Recommend adding a GitHub link to show practical ability."
+      "github": "Recommend adding a GitHub link to show practical ability.",
+      "practice": "Recommend adding volunteer and practice records for evaluation."
     },
     "latest": {
       "title": "Recent change requests",
@@ -463,6 +479,15 @@
       "gradeMajor": "Grade/Major change: {from} → {to}",
       "award": "Award {action}: {title}",
       "tag": "Tag {action}: {category} / {name}"
+    },
+    "actions": {
+      "requestDelete": "Request delete",
+      "approve": "Approve",
+      "reject": "Reject",
+      "search": "Search",
+      "viewAndEdit": "View and edit",
+      "saveAndSync": "Save and sync",
+      "select": "Select"
     },
     "labels": {
       "unset": "Unset",
@@ -507,9 +532,19 @@
       "idCard": "ID card (committee visible)",
       "className": "Class",
       "identitySingle": "Identity info (single-language input)",
+      "identityEthnicity": "Ethnicity",
+      "identityIdNo": "ID number",
+      "identityPoliticalStatus": "Political status",
+      "identityNativePlace": "Native place",
       "chooseGrade": "Choose grade",
       "chooseMajor": "Choose major",
       "identityPlaceholder": "Identity info (single-language input, auto synced to all locales)",
+      "practicePlaceholder": "Volunteer and practice (hours, activities, social practice, etc.)",
+      "practiceVolunteerStartDate": "Volunteer start date",
+      "practiceVolunteerNo": "Volunteer number",
+      "practiceVolunteerHours": "Total volunteer hours",
+      "practiceServiceDirection": "Service direction",
+      "practiceSummary": "Practice summary",
       "tagCategory": "Tag category (single-language input)",
       "tagName": "Tag name (single-language input)",
       "awardTitle": "Award title (single-language input)",

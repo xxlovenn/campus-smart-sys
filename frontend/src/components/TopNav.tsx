@@ -19,6 +19,8 @@ type NavItem = {
   href: string;
   key: NavKey;
 };
+type ClockMode = 'compact' | 'full';
+const CLOCK_MODE_KEY = 'sidebarClockModeV1';
 
 const NAV_ITEMS: Record<SidebarRole, NavItem[]> = {
   student: [
@@ -70,6 +72,8 @@ export function TopNav() {
 
   const [token, setTok] = useState<string | null>(null);
   const [me, setMe] = useState<Me | null>(null);
+  const [now, setNow] = useState<Date>(new Date());
+  const [clockMode, setClockMode] = useState<ClockMode>('full');
 
   useEffect(() => {
     const t = getToken();
@@ -90,6 +94,21 @@ export function TopNav() {
       setMe(null);
     }
   }, [pathname]);
+
+  useEffect(() => {
+    const savedMode = window.localStorage.getItem(CLOCK_MODE_KEY);
+    if (savedMode === 'compact' || savedMode === 'full') {
+      setClockMode(savedMode);
+    }
+    const timer = window.setInterval(() => {
+      setNow(new Date());
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    window.localStorage.setItem(CLOCK_MODE_KEY, clockMode);
+  }, [clockMode]);
 
   const locales = ['zh', 'en', 'ru'] as const;
 
@@ -121,6 +140,49 @@ export function TopNav() {
   const roleLine = token
     ? tSidebar(`role.${roleLabelKey(me?.role)}`)
     : tSidebar('role.GUEST');
+  const nowText = useMemo(
+    () =>
+      new Intl.DateTimeFormat(locale, {
+        ...(clockMode === 'full'
+          ? {
+              year: 'numeric' as const,
+              month: '2-digit' as const,
+              day: '2-digit' as const,
+              second: '2-digit' as const,
+            }
+          : {}),
+        hour: '2-digit',
+        minute: '2-digit',
+        hour12: false,
+      }).format(now),
+    [clockMode, locale, now],
+  );
+
+  const renderClockCard = (
+    <div className="sidebar-clock-box">
+      <div className="sidebar-clock-label">{tCommon('currentDateTime')}</div>
+      <div className="sidebar-clock-value">{nowText}</div>
+      <div className="sidebar-clock-mode-row">
+        <span className="sidebar-clock-mode-label">{tCommon('timeDisplay')}</span>
+        <div className="sidebar-clock-mode-group">
+          <button
+            type="button"
+            className={`sidebar-clock-mode-btn ${clockMode === 'compact' ? 'active' : ''}`}
+            onClick={() => setClockMode('compact')}
+          >
+            {tCommon('timeModeCompact')}
+          </button>
+          <button
+            type="button"
+            className={`sidebar-clock-mode-btn ${clockMode === 'full' ? 'active' : ''}`}
+            onClick={() => setClockMode('full')}
+          >
+            {tCommon('timeModeFull')}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
 
   return (
     <aside className="sidebar">
@@ -147,6 +209,7 @@ export function TopNav() {
           </nav>
 
           <div className="sidebar-footer">
+            {renderClockCard}
             <div style={{ marginBottom: 12 }}>
               {tCommon('language')}: {locale.toUpperCase()}
             </div>
@@ -178,6 +241,7 @@ export function TopNav() {
           </nav>
 
           <div className="sidebar-footer">
+            {renderClockCard}
             <div style={{ marginBottom: 12 }}>
               {tCommon('language')}: {locale.toUpperCase()}
             </div>

@@ -52,6 +52,9 @@ export class ProfileService {
       identityZh?: string;
       identityEn?: string;
       identityRu?: string;
+      practiceZh?: string;
+      practiceEn?: string;
+      practiceRu?: string;
     },
   ) {
     await this.getOrCreate(userId);
@@ -71,6 +74,9 @@ export class ProfileService {
         identityZh: dto.identityZh,
         identityEn: dto.identityEn,
         identityRu: dto.identityRu,
+        practiceZh: dto.practiceZh,
+        practiceEn: dto.practiceEn,
+        practiceRu: dto.practiceRu,
       },
       include: {
         awards: true,
@@ -612,6 +618,9 @@ export class ProfileService {
       identityZh?: string;
       identityEn?: string;
       identityRu?: string;
+      practiceZh?: string;
+      practiceEn?: string;
+      practiceRu?: string;
     },
   ) {
     const existing = await this.prisma.user.findUnique({ where: { id: userId } });
@@ -641,6 +650,9 @@ export class ProfileService {
         identityZh: dto.identityZh,
         identityEn: dto.identityEn,
         identityRu: dto.identityRu,
+        practiceZh: dto.practiceZh,
+        practiceEn: dto.practiceEn,
+        practiceRu: dto.practiceRu,
         reviewStatus: ProfileReviewStatus.APPROVED,
         rejectReason: null,
         submittedAt: null,

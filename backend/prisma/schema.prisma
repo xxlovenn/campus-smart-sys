@@ -206,6 +206,7 @@ model Task {
   assignee     User?              @relation("TaskAssignee", fields: [assigneeId], references: [id])
   reviewedBy   User?              @relation("TaskReviewer", fields: [reviewedById], references: [id])
   primaryOrg   Organization?      @relation("TaskPrimaryOrg", fields: [primaryOrgId], references: [id])
+  syncedPlans  PersonalPlan[]     @relation("TaskSyncedPlans")
   relatedOrgs   TaskOrganization[]
   orgReviews   TaskOrgReview[]
   notifications Notification[]
@@ -251,11 +252,16 @@ model PersonalPlan {
   priority         PlanPriority @default(MEDIUM)
   status           PlanStatus   @default(TODO)
   source           PlanSource   @default(PERSONAL)
+  upstreamTaskId   String?
   dueAt            DateTime?
   syncedToTimeline Boolean      @default(true)
   createdAt        DateTime     @default(now())
 
-  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  user         User  @relation(fields: [userId], references: [id], onDelete: Cascade)
+  upstreamTask Task? @relation("TaskSyncedPlans", fields: [upstreamTaskId], references: [id], onDelete: SetNull)
+
+  @@unique([userId, upstreamTaskId])
+  @@index([upstreamTaskId])
 }
 
 model ScheduleEntry {
@@ -280,6 +286,9 @@ model Profile {
   identityZh    String                @default("")
   identityEn    String                @default("")
   identityRu    String                @default("")
+  practiceZh    String                @default("")
+  practiceEn    String                @default("")
+  practiceRu    String                @default("")
   reviewStatus  ProfileReviewStatus   @default(PENDING)
   rejectReason  String?
   submittedAt   DateTime?

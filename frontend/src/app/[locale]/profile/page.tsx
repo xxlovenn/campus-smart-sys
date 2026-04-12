@@ -25,6 +25,9 @@ type Profile = {
   identityZh?: string;
   identityEn?: string;
   identityRu?: string;
+  practiceZh?: string;
+  practiceEn?: string;
+  practiceRu?: string;
   reviewStatus: string;
   rejectReason?: string | null;
   submittedAt?: string | null;
@@ -90,6 +93,83 @@ type GradeMajorRequest = {
   user?: { id: string; name?: string; email?: string; studentId?: string };
 };
 
+type IdentityForm = {
+  ethnicity: string;
+  idCardNumber: string;
+  politicalStatus: string;
+  nativePlace: string;
+};
+
+type PracticeForm = {
+  volunteerStartDate: string;
+  volunteerNo: string;
+  volunteerHours: string;
+  serviceDirection: string;
+  practiceSummary: string;
+};
+
+function parseLabeledText(raw: string) {
+  const rows = new Map<string, string>();
+  raw
+    .split('\n')
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .forEach((line) => {
+      const matched = line.match(/^([^：:]+)[：:]\s*(.*)$/);
+      if (!matched) return;
+      rows.set(matched[1].trim(), matched[2].trim());
+    });
+  return rows;
+}
+
+function pickByAliases(rows: Map<string, string>, aliases: string[]) {
+  for (const key of aliases) {
+    const value = rows.get(key);
+    if (value) return value;
+  }
+  return '';
+}
+
+function parseIdentityForm(raw: string): IdentityForm {
+  const rows = parseLabeledText(raw);
+  return {
+    ethnicity: pickByAliases(rows, ['民族', 'Ethnicity', 'Национальность']),
+    idCardNumber: pickByAliases(rows, ['身份证号', 'ID Number', 'Номер удостоверения']),
+    politicalStatus: pickByAliases(rows, ['政治面貌', 'Political Status', 'Политический статус']),
+    nativePlace: pickByAliases(rows, ['籍贯', 'Native Place', 'Место происхождения']),
+  };
+}
+
+function parsePracticeForm(raw: string): PracticeForm {
+  const rows = parseLabeledText(raw);
+  return {
+    volunteerStartDate: pickByAliases(rows, ['成为志愿者时间', 'Volunteer Start Date', 'Дата начала волонтерства']),
+    volunteerNo: pickByAliases(rows, ['志愿号', 'Volunteer Number', 'Номер волонтера']),
+    volunteerHours: pickByAliases(rows, ['累计志愿时长', 'Volunteer Hours', 'Часы волонтерства']),
+    serviceDirection: pickByAliases(rows, ['服务方向', 'Service Direction', 'Направление службы']),
+    practiceSummary: pickByAliases(rows, ['实践经历', 'Practice Summary', 'Практический опыт']),
+  };
+}
+
+function buildIdentityText(form: IdentityForm) {
+  return [
+    `民族：${form.ethnicity.trim()}`,
+    `身份证号：${form.idCardNumber.trim()}`,
+    `政治面貌：${form.politicalStatus.trim()}`,
+    `籍贯：${form.nativePlace.trim()}`,
+  ].join('\n');
+}
+
+function buildPracticeText(form: PracticeForm) {
+  return [
+    `成为志愿者时间：${form.volunteerStartDate.trim()}`,
+    `志愿号：${form.volunteerNo.trim()}`,
+    `累计志愿时长：${form.volunteerHours.trim()}`,
+    `服务方向：${form.serviceDirection.trim()}`,
+    `实践经历：${form.practiceSummary.trim()}`,
+  ].join('\n');
+}
+
 function profileStatusBadge(
   status: string | undefined,
   labels: { approved: string; rejected: string; pending: string },
@@ -119,6 +199,20 @@ export default function ProfilePage() {
     major: '',
     github: '',
     identity: '',
+    practice: '',
+  });
+  const [identityForm, setIdentityForm] = useState<IdentityForm>({
+    ethnicity: '',
+    idCardNumber: '',
+    politicalStatus: '',
+    nativePlace: '',
+  });
+  const [practiceForm, setPracticeForm] = useState<PracticeForm>({
+    volunteerStartDate: '',
+    volunteerNo: '',
+    volunteerHours: '',
+    serviceDirection: '',
+    practiceSummary: '',
   });
   const [metaOptions, setMetaOptions] = useState<MetaOptions>({ grades: [], majors: [] });
   const [picker, setPicker] = useState<{ open: boolean; kind: 'grade' | 'major' }>({
@@ -197,7 +291,12 @@ export default function ProfilePage() {
         major: currentUser.major ?? '',
         github: prof.githubUrl ?? '',
         identity: prof.identityZh ?? prof.identityEn ?? prof.identityRu ?? '',
+        practice: prof.practiceZh ?? prof.practiceEn ?? prof.practiceRu ?? '',
       });
+      const identityRaw = prof.identityZh ?? prof.identityEn ?? prof.identityRu ?? '';
+      const practiceRaw = prof.practiceZh ?? prof.practiceEn ?? prof.practiceRu ?? '';
+      setIdentityForm(parseIdentityForm(identityRaw));
+      setPracticeForm(parsePracticeForm(practiceRaw));
       setMetaOptions({
         grades: Array.isArray(options.grades) ? options.grades : [],
         majors: Array.isArray(options.majors) ? options.majors : [],
@@ -220,6 +319,31 @@ export default function ProfilePage() {
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
     if (!token) return;
+    if (!basic.name.trim() || !basic.studentId.trim() || !basic.phone.trim() || !basic.email.trim()) {
+      setErr(tp('errors.requiredBasic'));
+      return;
+    }
+    if (
+      !identityForm.ethnicity.trim() ||
+      !identityForm.idCardNumber.trim() ||
+      !identityForm.politicalStatus.trim() ||
+      !identityForm.nativePlace.trim()
+    ) {
+      setErr(tp('errors.requiredIdentity'));
+      return;
+    }
+    if (
+      !practiceForm.volunteerStartDate.trim() ||
+      !practiceForm.volunteerNo.trim() ||
+      !practiceForm.volunteerHours.trim() ||
+      !practiceForm.serviceDirection.trim() ||
+      !practiceForm.practiceSummary.trim()
+    ) {
+      setErr(tp('errors.requiredPractice'));
+      return;
+    }
+    const identityPayload = buildIdentityText(identityForm);
+    const practicePayload = buildPracticeText(practiceForm);
     if (!confirmAction(tp('confirm.saveBasic'))) return;
     try {
       await apiFetch('/profile/me', {
@@ -231,9 +355,12 @@ export default function ProfilePage() {
           phone: basic.phone,
           email: basic.email,
           githubUrl: basic.github,
-          identityZh: basic.identity,
-          identityEn: basic.identity,
-          identityRu: basic.identity,
+          identityZh: identityPayload,
+          identityEn: identityPayload,
+          identityRu: identityPayload,
+          practiceZh: practicePayload,
+          practiceEn: practicePayload,
+          practiceRu: practicePayload,
         }),
       });
       await load();
@@ -434,7 +561,7 @@ export default function ProfilePage() {
     pending: tp('status.pending'),
   });
   const profileCompleteness = (() => {
-    const total = 8;
+    const total = 9;
     const checks = [
       !!basic.name.trim(),
       !!basic.studentId.trim(),
@@ -443,17 +570,41 @@ export default function ProfilePage() {
       !!basic.grade.trim(),
       !!basic.major.trim(),
       !!basic.github.trim(),
-      !!basic.identity.trim(),
+      !!identityForm.ethnicity.trim() &&
+        !!identityForm.idCardNumber.trim() &&
+        !!identityForm.politicalStatus.trim() &&
+        !!identityForm.nativePlace.trim(),
+      !!practiceForm.volunteerStartDate.trim() &&
+        !!practiceForm.volunteerNo.trim() &&
+        !!practiceForm.volunteerHours.trim() &&
+        !!practiceForm.serviceDirection.trim() &&
+        !!practiceForm.practiceSummary.trim(),
     ];
     const done = checks.filter(Boolean).length;
     return { done, total, percent: Math.round((done / total) * 100) };
   })();
   const archiveSuggestions = (() => {
     const tips: string[] = [];
-    if (!basic.identity.trim()) tips.push(tp('tips.identity'));
+    if (
+      !identityForm.ethnicity.trim() ||
+      !identityForm.idCardNumber.trim() ||
+      !identityForm.politicalStatus.trim() ||
+      !identityForm.nativePlace.trim()
+    ) {
+      tips.push(tp('tips.identity'));
+    }
     if (profile?.awards.length === 0) tips.push(tp('tips.awards'));
     if (profile?.tags.length === 0) tips.push(tp('tips.tags'));
     if (!basic.github.trim()) tips.push(tp('tips.github'));
+    if (
+      !practiceForm.volunteerStartDate.trim() ||
+      !practiceForm.volunteerNo.trim() ||
+      !practiceForm.volunteerHours.trim() ||
+      !practiceForm.serviceDirection.trim() ||
+      !practiceForm.practiceSummary.trim()
+    ) {
+      tips.push(tp('tips.practice'));
+    }
     return tips.slice(0, 3);
   })();
   const latestRequests = (() => {
@@ -559,26 +710,26 @@ export default function ProfilePage() {
                 <h3 style={{ margin: 0 }}>{t('modules.basic')}</h3>
                 <form onSubmit={saveProfile} style={{ display: 'grid', gap: 10 }}>
                   <div className="grid-two">
-                    <input placeholder={tp('fields.name')} value={basic.name} onChange={(e) => setBasic((s) => ({ ...s, name: e.target.value }))} />
-                    <input placeholder={tp('fields.studentId')} value={basic.studentId} onChange={(e) => setBasic((s) => ({ ...s, studentId: e.target.value }))} />
+                    <input placeholder={tp('fields.name')} value={basic.name} onChange={(e) => setBasic((s) => ({ ...s, name: e.target.value }))} required />
+                    <input placeholder={tp('fields.studentId')} value={basic.studentId} onChange={(e) => setBasic((s) => ({ ...s, studentId: e.target.value }))} required />
                   </div>
                   <div className="grid-two">
-                    <input placeholder={tp('fields.phone')} value={basic.phone} onChange={(e) => setBasic((s) => ({ ...s, phone: e.target.value }))} />
-                    <input placeholder={tp('fields.email')} value={basic.email} onChange={(e) => setBasic((s) => ({ ...s, email: e.target.value }))} />
+                    <input placeholder={tp('fields.phone')} value={basic.phone} onChange={(e) => setBasic((s) => ({ ...s, phone: e.target.value }))} required />
+                    <input placeholder={tp('fields.email')} value={basic.email} onChange={(e) => setBasic((s) => ({ ...s, email: e.target.value }))} required />
                   </div>
                   <div className="grid-two">
                     <label style={{ display: 'grid', gap: 6 }}>
                       <span className="topbar-muted">{tp('fields.grade')}</span>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <input value={basic.grade ? `${basic.grade}${tp('labels.gradeSuffix')}` : ''} placeholder={tp('fields.chooseGrade')} readOnly />
-                        <button type="button" onClick={() => setPicker({ open: true, kind: 'grade' })}>{tp('actions.select')}</button>
+                        <button type="button" onClick={() => setPicker({ open: true, kind: 'grade' })}>{t('actions.select')}</button>
                       </div>
                     </label>
                     <label style={{ display: 'grid', gap: 6 }}>
                       <span className="topbar-muted">{tp('fields.major')}</span>
                       <div style={{ display: 'flex', gap: 8 }}>
                         <input value={basic.major} placeholder={tp('fields.chooseMajor')} readOnly />
-                        <button type="button" onClick={() => setPicker({ open: true, kind: 'major' })}>{tp('actions.select')}</button>
+                        <button type="button" onClick={() => setPicker({ open: true, kind: 'major' })}>{t('actions.select')}</button>
                       </div>
                     </label>
                   </div>
@@ -589,12 +740,34 @@ export default function ProfilePage() {
 
               <section className="card-soft" style={{ display: 'grid', gap: 12 }}>
                 <h3 style={{ margin: 0 }}>{t('modules.identity')}</h3>
-                <textarea
-                  rows={4}
-                  placeholder={tp('fields.identityPlaceholder')}
-                  value={basic.identity}
-                  onChange={(e) => setBasic((s) => ({ ...s, identity: e.target.value }))}
-                />
+                <div className="grid-two">
+                  <input
+                    placeholder={tp('fields.identityEthnicity')}
+                    value={identityForm.ethnicity}
+                    onChange={(e) => setIdentityForm((s) => ({ ...s, ethnicity: e.target.value }))}
+                    required
+                  />
+                  <input
+                    placeholder={tp('fields.identityIdNo')}
+                    value={identityForm.idCardNumber}
+                    onChange={(e) => setIdentityForm((s) => ({ ...s, idCardNumber: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="grid-two">
+                  <input
+                    placeholder={tp('fields.identityPoliticalStatus')}
+                    value={identityForm.politicalStatus}
+                    onChange={(e) => setIdentityForm((s) => ({ ...s, politicalStatus: e.target.value }))}
+                    required
+                  />
+                  <input
+                    placeholder={tp('fields.identityNativePlace')}
+                    value={identityForm.nativePlace}
+                    onChange={(e) => setIdentityForm((s) => ({ ...s, nativePlace: e.target.value }))}
+                    required
+                  />
+                </div>
                 <p className="topbar-muted" style={{ margin: 0 }}>
                   {tp('identityHint')}
                 </p>
@@ -604,10 +777,45 @@ export default function ProfilePage() {
             <div className="grid-two">
               <section className="card-soft" style={{ display: 'grid', gap: 10 }}>
                 <h3 style={{ margin: 0 }}>{t('modules.practice')}</h3>
+                <div className="grid-two">
+                  <input
+                    type="date"
+                    placeholder={tp('fields.practiceVolunteerStartDate')}
+                    value={practiceForm.volunteerStartDate}
+                    onChange={(e) => setPracticeForm((s) => ({ ...s, volunteerStartDate: e.target.value }))}
+                    required
+                  />
+                  <input
+                    placeholder={tp('fields.practiceVolunteerNo')}
+                    value={practiceForm.volunteerNo}
+                    onChange={(e) => setPracticeForm((s) => ({ ...s, volunteerNo: e.target.value }))}
+                    required
+                  />
+                </div>
+                <div className="grid-two">
+                  <input
+                    placeholder={tp('fields.practiceVolunteerHours')}
+                    value={practiceForm.volunteerHours}
+                    onChange={(e) => setPracticeForm((s) => ({ ...s, volunteerHours: e.target.value }))}
+                    required
+                  />
+                  <input
+                    placeholder={tp('fields.practiceServiceDirection')}
+                    value={practiceForm.serviceDirection}
+                    onChange={(e) => setPracticeForm((s) => ({ ...s, serviceDirection: e.target.value }))}
+                    required
+                  />
+                </div>
+                <textarea
+                  rows={4}
+                  placeholder={tp('fields.practiceSummary')}
+                  value={practiceForm.practiceSummary}
+                  onChange={(e) => setPracticeForm((s) => ({ ...s, practiceSummary: e.target.value }))}
+                  required
+                />
                 <p className="topbar-muted" style={{ margin: 0 }}>
                   {tp('practiceHint')}
                 </p>
-                <div className="topbar-muted">{tp('practiceSuggestion')}</div>
               </section>
 
               <section className="card-soft" style={{ display: 'grid', gap: 10 }}>
@@ -822,7 +1030,7 @@ export default function ProfilePage() {
                   setPicker((s) => ({ ...s, open: false }));
                 }}
               >
-                {tp('actions.select')}
+                {t('actions.select')}
               </button>
             </li>
           ))}

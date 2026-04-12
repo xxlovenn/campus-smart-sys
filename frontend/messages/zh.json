@@ -67,6 +67,10 @@
     "refresh": "刷新",
     "status": "状态",
     "due": "截止",
+    "currentDateTime": "当前日期时间",
+    "timeDisplay": "显示",
+    "timeModeCompact": "精简",
+    "timeModeFull": "完整",
     "loading": "加载中…",
     "error": "出错了",
     "language": "语言",
@@ -258,6 +262,7 @@
       },
       "ai": {
         "title": "AI 建议",
+        "hint": "根据截止时间、任务状态与课程节奏自动生成，建议先完成前两条。",
         "empty": "当前暂无建议",
         "deadlineFirst": "今天先处理 {count} 个即将截止事项，避免堆积。",
         "taskFirst": "优先推进任务「{task}」，完成后再处理次要事项。",
@@ -319,7 +324,14 @@
     "labels": {
       "plan": "计划",
       "task": "任务",
+      "activity": "活动",
       "note": "备注"
+    },
+    "sources": {
+      "schedule": "课表课程",
+      "plan": "个人计划",
+      "campusTask": "校园任务",
+      "orgActivity": "组织活动"
     },
     "range": {
       "day": "日",
@@ -432,7 +444,10 @@
       "submitReview": "提交审核失败",
       "deleteRequest": "提交删除申请失败",
       "review": "审核失败",
-      "query": "查询失败"
+      "query": "查询失败",
+      "requiredBasic": "请完整填写基础信息（姓名、学号、手机号、邮箱）",
+      "requiredIdentity": "请完整填写身份信息（民族、身份证号、政治面貌、籍贯）",
+      "requiredPractice": "请完整填写志愿与实践信息（成为志愿者时间、志愿号、累计志愿时长、服务方向、实践经历）"
     },
     "confirm": {
       "saveBasic": "确认保存基础信息吗？",
@@ -452,7 +467,8 @@
       "identity": "请补充身份信息，便于团委核验。",
       "awards": "建议至少提交一条奖项/荣誉记录。",
       "tags": "建议补充能力标签，突出个人优势。",
-      "github": "建议补充 GitHub 链接以展示实践能力。"
+      "github": "建议补充 GitHub 链接以展示实践能力。",
+      "practice": "建议补充志愿与实践经历，便于综合评审。"
     },
     "latest": {
       "title": "最近变更申请记录",
@@ -460,6 +476,15 @@
       "gradeMajor": "年级/专业变更：{from} → {to}",
       "award": "奖项{action}：{title}",
       "tag": "标签{action}：{category} / {name}"
+    },
+    "actions": {
+      "requestDelete": "申请删除",
+      "approve": "通过",
+      "reject": "驳回",
+      "search": "查询",
+      "viewAndEdit": "查看并修改",
+      "saveAndSync": "保存修改并同步",
+      "select": "选择"
     },
     "labels": {
       "unset": "未设置",
@@ -504,9 +529,19 @@
       "idCard": "身份证号（团委可见）",
       "className": "班级",
       "identitySingle": "身份信息（单语输入）",
+      "identityEthnicity": "民族",
+      "identityIdNo": "身份证号",
+      "identityPoliticalStatus": "政治面貌",
+      "identityNativePlace": "籍贯",
       "chooseGrade": "请选择年级",
       "chooseMajor": "请选择专业",
       "identityPlaceholder": "身份信息（单语输入，自动互通多语言）",
+      "practicePlaceholder": "志愿与实践（可填写志愿时长、服务活动、社会实践等）",
+      "practiceVolunteerStartDate": "成为志愿者时间",
+      "practiceVolunteerNo": "志愿号",
+      "practiceVolunteerHours": "累计志愿时长（小时）",
+      "practiceServiceDirection": "服务方向",
+      "practiceSummary": "实践经历（活动/项目简述）",
       "tagCategory": "标签分类（单语输入，多语言互通）",
       "tagName": "标签名称（单语输入，多语言互通）",
       "awardTitle": "奖项名称（单语输入，多语言互通）",

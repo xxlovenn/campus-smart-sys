@@ -48,6 +48,7 @@ type DashboardTaskRow = {
   endAt?: string | null;
   dueAt?: string | null;
   createdAt?: string | null;
+  source?: string;
   primaryOrgId?: string | null;
   relatedOrgs?: Array<{ organizationId?: string }>;
 };
@@ -70,10 +71,6 @@ type ReminderPlanRow = {
   titleEn?: string;
   titleRu?: string;
   dueAt?: string | null;
-};
-type DashboardOrgRow = {
-  id: string;
-  status?: 'ACTIVE' | 'PAUSED';
 };
 type UpcomingReminders = {
   plans?: ReminderPlanRow[];
@@ -133,7 +130,9 @@ type TimelineVizItem = {
   source: string;
   status?: string;
 };
-type StudentTimelineFilter = 'ALL' | 'COURSE' | 'TASK';
+type StudentTimelineFilter = 'ALL' | 'COURSE' | 'TASK' | 'ACTIVITY';
+type StudentTimelineRange = 'DAY' | 'WEEK' | 'MONTH';
+const TIMELINE_SYNC_KEY = 'studentTimelineSyncV1';
 
 type QuickKey = 'timeline' | 'tasks' | 'organizations' | 'profile' | 'notifications' | 'admin';
 type SidebarRole = 'student' | 'orgAdmin' | 'leagueAdmin';
@@ -202,13 +201,6 @@ const QUICK_DESC: Record<QuickKey, string> = {
   notifications: 'desc.notifications',
   admin: 'desc.admin',
 };
-
-const CAPABILITY_ROWS = [
-  { titleKey: 'capabilities.multilingual.title', descKey: 'capabilities.multilingual.desc' },
-  { titleKey: 'capabilities.studentTime.title', descKey: 'capabilities.studentTime.desc' },
-  { titleKey: 'capabilities.orgFlow.title', descKey: 'capabilities.orgFlow.desc' },
-  { titleKey: 'capabilities.leagueGovernance.title', descKey: 'capabilities.leagueGovernance.desc' },
-] as const;
 
 function roleMessageKey(role: string): 'role.STUDENT' | 'role.ORG_ADMIN' | 'role.LEAGUE_ADMIN' {
   if (role === 'ORG_ADMIN') return 'role.ORG_ADMIN';
@@ -281,6 +273,43 @@ function toDayBoundary(date: Date, hour: number, minute: number) {
   return d;
 }
 
+function startOfDay(date: Date) {
+  return toDayBoundary(date, 0, 0);
+}
+
+function startOfWeekMonday(date: Date) {
+  const d = startOfDay(date);
+  const weekday = d.getDay() === 0 ? 7 : d.getDay();
+  d.setDate(d.getDate() - (weekday - 1));
+  return d;
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function addDays(date: Date, days: number) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function combineDateAndTime(day: Date, hhmm?: string) {
+  if (!hhmm) return null;
+  const [h, m] = String(hhmm).split(':').map((n) => Number(n));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  const d = new Date(day);
+  d.setHours(h, m, 0, 0);
+  return d.toISOString();
+}
+
+function dateKey(value: Date) {
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, '0');
+  const d = String(value.getDate()).padStart(2, '0');
+  return `${y}-${m}-${d}`;
+}
+
 function clampNumber(value: number, min: number, max: number) {
   return Math.min(Math.max(value, min), max);
 }
@@ -310,11 +339,30 @@ export default function DashboardPage() {
   const [scheduleEntries, setScheduleEntries] = useState<ScheduleEntry[]>([]);
   const [upcomingReminders, setUpcomingReminders] = useState<UpcomingReminders | null>(null);
   const [recommendations, setRecommendations] = useState<RecommendationItem[]>([]);
-  const [orgRows, setOrgRows] = useState<DashboardOrgRow[]>([]);
   const [orgDeadlineWindow, setOrgDeadlineWindow] = useState<OrgDeadlineWindow>(72);
   const [leagueRecentFilter, setLeagueRecentFilter] = useState<LeagueRecentFilter>('ALL');
   const [studentTimelineFilter, setStudentTimelineFilter] = useState<StudentTimelineFilter>('ALL');
+  const [studentTimelineRange, setStudentTimelineRange] = useState<StudentTimelineRange>('WEEK');
   const [reloadTick, setReloadTick] = useState(0);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(TIMELINE_SYNC_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { range?: StudentTimelineRange };
+      if (parsed.range && ['DAY', 'WEEK', 'MONTH'].includes(parsed.range)) {
+        setStudentTimelineRange(parsed.range);
+      }
+    } catch {
+      // ignore malformed storage payload
+    }
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(TIMELINE_SYNC_KEY, JSON.stringify({ range: studentTimelineRange }));
+  }, [studentTimelineRange]);
 
   useEffect(() => {
     if (!token) {
@@ -328,7 +376,6 @@ export default function DashboardPage() {
       setScheduleEntries([]);
       setUpcomingReminders(null);
       setRecommendations([]);
-      setOrgRows([]);
       setLoadingData(false);
       return;
     }
@@ -398,17 +445,6 @@ export default function DashboardPage() {
           setScheduleEntries([]);
           setUpcomingReminders(null);
           setRecommendations([]);
-        }
-
-        if (user.role === 'ORG_ADMIN') {
-          try {
-            const orgList = await apiFetch<DashboardOrgRow[]>('/organizations', { token });
-            if (active) setOrgRows(Array.isArray(orgList) ? orgList : []);
-          } catch {
-            if (active) setOrgRows([]);
-          }
-        } else if (active) {
-          setOrgRows([]);
         }
 
         if (user.role === 'LEAGUE_ADMIN') {
@@ -609,14 +645,45 @@ export default function DashboardPage() {
     }
     return leagueRecentTasks.filter((row) => row.status === 'DONE');
   }, [leagueRecentFilter, leagueRecentTasks]);
+  const studentWindowStart = useMemo(() => {
+    const now = new Date();
+    if (studentTimelineRange === 'DAY') return startOfDay(now);
+    if (studentTimelineRange === 'WEEK') return startOfWeekMonday(now);
+    return startOfMonth(now);
+  }, [studentTimelineRange]);
+  const studentWindowEnd = useMemo(() => {
+    if (studentTimelineRange === 'DAY') return addDays(studentWindowStart, 1);
+    if (studentTimelineRange === 'WEEK') return addDays(studentWindowStart, 7);
+    return new Date(
+      studentWindowStart.getFullYear(),
+      studentWindowStart.getMonth() + 1,
+      1,
+      0,
+      0,
+      0,
+      0,
+    );
+  }, [studentTimelineRange, studentWindowStart]);
   const todayCourses = useMemo(() => {
     if (!isStudent) return [];
     const weekday = new Date().getDay() || 7;
+    const unique = new Set<string>();
     return scheduleEntries
       .filter((row) => row.weekday === weekday)
+      .filter((row) => {
+        const key = [
+          triField(row as unknown as Record<string, unknown>, 'course', locale) || '',
+          row.startTime ?? '',
+          row.endTime ?? '',
+          triField(row as unknown as Record<string, unknown>, 'location', locale) || '',
+        ].join('|');
+        if (unique.has(key)) return false;
+        unique.add(key);
+        return true;
+      })
       .sort((a, b) => String(a.startTime ?? '').localeCompare(String(b.startTime ?? '')))
-      .slice(0, 6);
-  }, [isStudent, scheduleEntries]);
+      .slice(0, 12);
+  }, [isStudent, locale, scheduleEntries]);
   const todayTaskCards = useMemo<StudentTaskCardRow[]>(() => {
     if (!isStudent) return [];
     if (recommendations.length > 0) {
@@ -737,14 +804,21 @@ export default function DashboardPage() {
   }, [isStudent, locale, studentDeadlines.length, t, todayCourses, todayTaskCards]);
   const studentTimelineItems = useMemo<TimelineVizItem[]>(() => {
     if (!isStudent) return [];
-    const courseRows: TimelineVizItem[] = todayCourses.map((row) => ({
-      id: `course-${row.id}`,
-      title: triField(row as unknown as Record<string, unknown>, 'course', locale) || t('title'),
-      startAt: toTodayIso(row.weekday, row.startTime),
-      endAt: toTodayIso(row.weekday, row.endTime),
-      type: 'COURSE',
-      source: '课表',
-    }));
+    const courseRows: TimelineVizItem[] = [];
+    for (let d = new Date(studentWindowStart); d < studentWindowEnd; d = addDays(d, 1)) {
+      const weekday = d.getDay() || 7;
+      const rows = scheduleEntries.filter((row) => row.weekday === weekday);
+      for (const row of rows) {
+        courseRows.push({
+          id: `course-${row.id}-${d.toISOString().slice(0, 10)}`,
+          title: triField(row as unknown as Record<string, unknown>, 'course', locale) || t('title'),
+          startAt: combineDateAndTime(d, row.startTime),
+          endAt: combineDateAndTime(d, row.endTime),
+          type: 'COURSE',
+          source: '课表',
+        });
+      }
+    }
     const taskRows: TimelineVizItem[] = tasks
       .filter((row) => row.status !== 'DONE')
       .map((row) => ({
@@ -752,27 +826,33 @@ export default function DashboardPage() {
         title: triField(row as unknown as Record<string, unknown>, 'title', locale) || t('quickEntry'),
         startAt: row.startAt ?? null,
         endAt: row.endAt ?? row.dueAt ?? null,
-        type: 'TASK',
-        source: '任务',
+        type: row.source === 'ORG_REQUEST' ? 'ACTIVITY' : 'TASK',
+        source: row.source === 'ORG_REQUEST' ? '活动' : '任务',
         status: row.status,
       }));
+    const startTs = studentWindowStart.getTime();
+    const endTs = studentWindowEnd.getTime();
     return [...courseRows, ...taskRows]
+      .filter((row) => {
+        const ts = parseDateValue(row.startAt ?? row.endAt)?.getTime();
+        if (!ts) return false;
+        return ts >= startTs && ts < endTs;
+      })
       .sort((a, b) => {
         const ta = parseDateValue(a.startAt ?? a.endAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
         const tb = parseDateValue(b.startAt ?? b.endAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
         return ta - tb;
       })
-      .slice(0, 8);
-  }, [isStudent, locale, t, tasks, todayCourses]);
+      .slice(0, 20);
+  }, [isStudent, locale, scheduleEntries, studentWindowEnd, studentWindowStart, t, tasks]);
   const filteredStudentTimelineItems = useMemo(() => {
     if (studentTimelineFilter === 'ALL') return studentTimelineItems;
     return studentTimelineItems.filter((row) => row.type === studentTimelineFilter);
   }, [studentTimelineFilter, studentTimelineItems]);
   const studentTimelineAxisRows = useMemo(() => {
-    if (!isStudent) return [];
-    const now = new Date();
-    const dayStart = toDayBoundary(now, 6, 0);
-    const dayEnd = toDayBoundary(now, 23, 0);
+    if (!isStudent || studentTimelineRange !== 'DAY') return [];
+    const dayStart = toDayBoundary(studentWindowStart, 6, 0);
+    const dayEnd = toDayBoundary(studentWindowStart, 23, 0);
     const totalMinutes = Math.max(1, (dayEnd.getTime() - dayStart.getTime()) / (60 * 1000));
     return filteredStudentTimelineItems
       .map((row) => {
@@ -801,7 +881,44 @@ export default function DashboardPage() {
         };
       })
       .filter((row): row is NonNullable<typeof row> => Boolean(row));
-  }, [filteredStudentTimelineItems, isStudent]);
+  }, [filteredStudentTimelineItems, isStudent, studentTimelineRange, studentWindowStart]);
+  const studentWeekDays = useMemo(() => {
+    if (!isStudent || studentTimelineRange !== 'WEEK') return [];
+    return Array.from({ length: 7 }, (_, idx) => {
+      const day = addDays(studentWindowStart, idx);
+      const key = dateKey(day);
+      const items = filteredStudentTimelineItems
+        .filter((row) => {
+          const start = parseDateValue(row.startAt ?? row.endAt);
+          return start ? dateKey(start) === key : false;
+        })
+        .slice(0, 5);
+      return { key, day, items };
+    });
+  }, [filteredStudentTimelineItems, isStudent, studentTimelineRange, studentWindowStart]);
+  const studentMonthCells = useMemo(() => {
+    if (!isStudent || studentTimelineRange !== 'MONTH') return [];
+    const year = studentWindowStart.getFullYear();
+    const month = studentWindowStart.getMonth();
+    const first = new Date(year, month, 1);
+    const days = new Date(year, month + 1, 0).getDate();
+    const offset = (first.getDay() + 6) % 7;
+    const cells: Array<{ day: Date | null; items: TimelineVizItem[] }> = [];
+    for (let i = 0; i < offset; i += 1) cells.push({ day: null, items: [] });
+    for (let day = 1; day <= days; day += 1) {
+      const d = new Date(year, month, day);
+      const key = dateKey(d);
+      const items = filteredStudentTimelineItems
+        .filter((row) => {
+          const start = parseDateValue(row.startAt ?? row.endAt);
+          return start ? dateKey(start) === key : false;
+        })
+        .slice(0, 3);
+      cells.push({ day: d, items });
+    }
+    while (cells.length % 7 !== 0) cells.push({ day: null, items: [] });
+    return cells;
+  }, [filteredStudentTimelineItems, isStudent, studentTimelineRange, studentWindowStart]);
   const orgScopedTasks = useMemo(() => {
     if (!isOrgAdmin) return [];
     const managed = Array.isArray(me?.managedOrgIds) ? me.managedOrgIds : [];
@@ -878,6 +995,72 @@ export default function DashboardPage() {
     const pendingReview = orgScopedTasks.filter((row) => row.approvalStatus === 'PENDING_APPROVAL').length;
     return { next7, next14, pendingReview };
   }, [isOrgAdmin, orgScopedTasks, orgUpcomingActivityItems]);
+  const orgCalendarDays = useMemo(() => {
+    if (!isOrgAdmin) {
+      return [] as Array<{
+        key: string;
+        label: string;
+        weekday: string;
+        items: Array<{ id: string; title: string; start: Date; end: Date; status?: string }>;
+        overlapCount: number;
+      }>;
+    }
+    const weekdayShort = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const base = new Date();
+    base.setHours(0, 0, 0, 0);
+    const days = Array.from({ length: 7 }).map((_, i) => {
+      const d = new Date(base);
+      d.setDate(base.getDate() + i);
+      const mm = String(d.getMonth() + 1).padStart(2, '0');
+      const dd = String(d.getDate()).padStart(2, '0');
+      return {
+        date: d,
+        key: `${d.getFullYear()}-${mm}-${dd}`,
+        label: `${mm}/${dd}`,
+        weekday: weekdayShort[d.getDay()],
+        items: [] as Array<{ id: string; title: string; start: Date; end: Date; status?: string }>,
+        overlapCount: 0,
+      };
+    });
+    for (const row of orgUpcomingActivityItems) {
+      const start = parseDateValue(row.startAt ?? row.endAt);
+      const end = parseDateValue(row.endAt ?? row.startAt);
+      if (!start || !end) continue;
+      const safeStart = start.getTime() <= end.getTime() ? start : end;
+      const safeEnd = end.getTime() >= start.getTime() ? end : start;
+      const key = `${safeStart.getFullYear()}-${String(safeStart.getMonth() + 1).padStart(2, '0')}-${String(
+        safeStart.getDate(),
+      ).padStart(2, '0')}`;
+      const day = days.find((d) => d.key === key);
+      if (!day) continue;
+      day.items.push({
+        id: row.id,
+        title: row.title,
+        start: safeStart,
+        end: safeEnd,
+        status: row.status,
+      });
+    }
+    for (const day of days) {
+      day.items.sort((a, b) => a.start.getTime() - b.start.getTime());
+      let overlapCount = 0;
+      let latestEnd = -1;
+      for (const item of day.items) {
+        const startTs = item.start.getTime();
+        const endTs = item.end.getTime();
+        if (latestEnd !== -1 && startTs < latestEnd) overlapCount += 1;
+        latestEnd = Math.max(latestEnd, endTs);
+      }
+      day.overlapCount = overlapCount;
+    }
+    return days.map(({ key, label, weekday, items, overlapCount }) => ({
+      key,
+      label,
+      weekday,
+      items,
+      overlapCount,
+    }));
+  }, [isOrgAdmin, orgUpcomingActivityItems]);
   const leagueUpcomingActivityItems = useMemo(() => {
     if (!isLeagueAdmin) return [];
     const now = Date.now();
@@ -907,7 +1090,7 @@ export default function DashboardPage() {
       nearest,
     };
   }, [isLeagueAdmin, locale, t, tasks]);
-  const recommendationReasonLabel = (code: string) => {
+  const recommendationReasonLabel = (code: string): string | null => {
     switch (code) {
       case 'overdue':
         return t('studentHome.recommendations.reasons.overdue');
@@ -930,14 +1113,20 @@ export default function DashboardPage() {
       case 'no_deadline':
         return t('studentHome.recommendations.reasons.noDeadline');
       default:
-        return t('studentHome.recommendations.reasons.default');
+        return null;
     }
   };
-  const leagueStatusLabel = (status?: string) => {
+  const taskStatusLabel = (status?: string) => {
     if (status === 'DONE') return t('leagueBoard.status.done');
     if (status === 'IN_PROGRESS') return t('leagueBoard.status.inProgress');
     if (status === 'BLOCKED') return t('leagueBoard.status.blocked');
     return t('leagueBoard.status.todo');
+  };
+  const taskStatusBadgeClass = (status?: string) => {
+    if (status === 'DONE') return 'badge badge-green';
+    if (status === 'IN_PROGRESS') return 'badge badge-blue';
+    if (status === 'BLOCKED') return 'badge badge-red';
+    return 'badge badge-yellow';
   };
   const leagueRecentFilterLabel = (filter: LeagueRecentFilter) => {
     if (filter === 'PENDING') return t('leagueBoard.filters.pending');
@@ -976,13 +1165,6 @@ export default function DashboardPage() {
       completionRate,
     };
   }, [isOrgAdmin, orgDeadlineWindow, orgScopedTasks]);
-  const orgStatusStats = useMemo(() => {
-    if (!isOrgAdmin) return { active: 0, paused: 0, total: 0 };
-    const paused = orgRows.filter((row) => row.status === 'PAUSED').length;
-    const active = orgRows.filter((row) => row.status !== 'PAUSED').length;
-    return { active, paused, total: orgRows.length };
-  }, [isOrgAdmin, orgRows]);
-
   const statCards = useMemo(() => {
     if (me?.role === 'LEAGUE_ADMIN') {
       return [
@@ -1154,14 +1336,6 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div className="dashboard-capability-grid">
-              {CAPABILITY_ROWS.map((row) => (
-                <div key={row.titleKey} className="dashboard-capability-card">
-                  <div className="dashboard-capability-title">{t(row.titleKey)}</div>
-                  <p className="dashboard-capability-desc">{t(row.descKey)}</p>
-                </div>
-              ))}
-            </div>
           </div>
 
           {me && (
@@ -1301,7 +1475,7 @@ export default function DashboardPage() {
                             {formatDateTimeShort(row.createdAt)}
                           </div>
                         </div>
-                        <strong>{leagueStatusLabel(row.status)}</strong>
+                        <strong>{taskStatusLabel(row.status)}</strong>
                       </li>
                     ))}
                   </ul>
@@ -1337,17 +1511,32 @@ export default function DashboardPage() {
               <div className="dashboard-section-header">
                 <div>
                   <div className="dashboard-student-card-title" style={{ marginBottom: 4 }}>
-                    课表 + 任务合并时间可视化
+                    课表 + 任务 + 活动合并时间可视化
                   </div>
                   <p className="topbar-muted" style={{ margin: 0, fontSize: 12 }}>
-                    今日小时轴展示 + 近期待办条目（基于合并时间轴）
+                    与统一时间轴同步范围：{studentTimelineRange}
                   </p>
                 </div>
                 <div className="dashboard-chip-group">
                   {([
+                    ['DAY', '日'],
+                    ['WEEK', '周'],
+                    ['MONTH', '月'],
+                  ] as Array<[StudentTimelineRange, string]>).map(([key, label]) => (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => setStudentTimelineRange(key)}
+                      className={`dashboard-chip ${studentTimelineRange === key ? 'dashboard-chip-active' : ''}`}
+                    >
+                      {label}
+                    </button>
+                  ))}
+                  {([
                     ['ALL', '全部'],
                     ['COURSE', '课程'],
                     ['TASK', '任务'],
+                    ['ACTIVITY', '活动'],
                   ] as Array<[StudentTimelineFilter, string]>).map(([key, label]) => (
                     <button
                       key={key}
@@ -1364,41 +1553,129 @@ export default function DashboardPage() {
                 <p className="topbar-muted">当前筛选下暂无时间条目</p>
               ) : (
                 <div className="dashboard-student-viz-layout">
-                  <div className="dashboard-hour-strip">
-                    <div className="dashboard-hour-track">
-                      {timelineMarks.map((mark) => (
-                        <span key={mark} className="dashboard-hour-mark">
-                          {mark}
-                        </span>
-                      ))}
+                  {studentTimelineRange === 'DAY' ? (
+                    <div className="dashboard-hour-strip">
+                      <div className="dashboard-hour-track">
+                        {timelineMarks.map((mark) => (
+                          <span key={mark} className="dashboard-hour-mark">
+                            {mark}
+                          </span>
+                        ))}
+                      </div>
+                      <div className="dashboard-hour-events">
+                        {studentTimelineAxisRows.length === 0 ? (
+                          <p className="topbar-muted" style={{ margin: 0 }}>
+                            今日未命中可视化时间段
+                          </p>
+                        ) : (
+                          studentTimelineAxisRows.map((row) => (
+                            <div key={row.id} className="dashboard-hour-event-row">
+                              <div className="dashboard-hour-event-title">
+                                <span>{row.title}</span>
+                                <span className="topbar-muted">
+                                  {formatHourMinuteLabel(row.startAt)}-{formatHourMinuteLabel(row.endAt)}
+                                </span>
+                              </div>
+                              <div className="dashboard-hour-event-track">
+                                <div
+                                  className={`dashboard-hour-event-fill ${
+                                    row.type === 'COURSE' ? 'dashboard-hour-event-course' : 'dashboard-hour-event-task'
+                                  }`}
+                                  style={{ left: `${row.leftPct}%`, width: `${row.widthPct}%` }}
+                                />
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
                     </div>
-                    <div className="dashboard-hour-events">
-                      {studentTimelineAxisRows.length === 0 ? (
-                        <p className="topbar-muted" style={{ margin: 0 }}>
-                          今日未命中可视化时间段
-                        </p>
+                  ) : (
+                    <div className="dashboard-hour-strip">
+                      {studentTimelineRange === 'WEEK' ? (
+                        <div className="timeline-table-wrap">
+                          <table className="timeline-table">
+                            <thead>
+                              <tr>
+                                {studentWeekDays.map((cell) => (
+                                  <th key={cell.key}>
+                                    {cell.day.toLocaleDateString(locale, { month: '2-digit', day: '2-digit' })}
+                                  </th>
+                                ))}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                {studentWeekDays.map((cell) => (
+                                  <td key={`rows-${cell.key}`}>
+                                    <div className="timeline-cell-stack">
+                                      {cell.items.length === 0 ? (
+                                        <span className="topbar-muted">—</span>
+                                      ) : (
+                                        cell.items.map((row) => (
+                                          <div
+                                            key={row.id}
+                                            className={`timeline-event-chip ${
+                                              row.type === 'COURSE'
+                                                ? 'timeline-chip-course'
+                                                : row.type === 'ACTIVITY'
+                                                  ? 'timeline-chip-activity'
+                                                  : 'timeline-chip-task'
+                                            }`}
+                                          >
+                                            {formatHourMinuteLabel(row.startAt)} {row.title}
+                                          </div>
+                                        ))
+                                      )}
+                                    </div>
+                                  </td>
+                                ))}
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
                       ) : (
-                        studentTimelineAxisRows.map((row) => (
-                          <div key={row.id} className="dashboard-hour-event-row">
-                            <div className="dashboard-hour-event-title">
-                              <span>{row.title}</span>
-                              <span className="topbar-muted">
-                                {formatHourMinuteLabel(row.startAt)}-{formatHourMinuteLabel(row.endAt)}
-                              </span>
-                            </div>
-                            <div className="dashboard-hour-event-track">
-                              <div
-                                className={`dashboard-hour-event-fill ${
-                                  row.type === 'COURSE' ? 'dashboard-hour-event-course' : 'dashboard-hour-event-task'
-                                }`}
-                                style={{ left: `${row.leftPct}%`, width: `${row.widthPct}%` }}
-                              />
-                            </div>
-                          </div>
-                        ))
+                        <div className="timeline-table-wrap">
+                          <table className="timeline-table">
+                            <tbody>
+                              {Array.from({ length: Math.ceil(studentMonthCells.length / 7) }, (_, rowIdx) => (
+                                <tr key={`m-${rowIdx}`}>
+                                  {studentMonthCells.slice(rowIdx * 7, rowIdx * 7 + 7).map((cell, idx) => (
+                                    <td key={`c-${rowIdx}-${idx}`} className={cell.day ? 'timeline-month-cell' : 'timeline-month-empty'}>
+                                      {cell.day ? (
+                                        <>
+                                          <div className="timeline-month-day">{cell.day.getDate()}</div>
+                                          <div className="timeline-cell-stack">
+                                            {cell.items.length === 0 ? (
+                                              <span className="topbar-muted">—</span>
+                                            ) : (
+                                              cell.items.map((row) => (
+                                                <div
+                                                  key={row.id}
+                                                  className={`timeline-event-chip ${
+                                                    row.type === 'COURSE'
+                                                      ? 'timeline-chip-course'
+                                                      : row.type === 'ACTIVITY'
+                                                        ? 'timeline-chip-activity'
+                                                        : 'timeline-chip-task'
+                                                  }`}
+                                                >
+                                                  {formatHourMinuteLabel(row.startAt)} {row.title}
+                                                </div>
+                                              ))
+                                            )}
+                                          </div>
+                                        </>
+                                      ) : null}
+                                    </td>
+                                  ))}
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        </div>
                       )}
                     </div>
-                  </div>
+                  )}
                   <ul className="dashboard-student-list">
                     {filteredStudentTimelineItems.slice(0, 6).map((row) => (
                       <li key={row.id} className="dashboard-student-item">
@@ -1408,8 +1685,16 @@ export default function DashboardPage() {
                             {row.source} · {formatDateTimeShort(row.startAt)} - {formatDateTimeShort(row.endAt)}
                           </div>
                         </div>
-                        <span className={row.type === 'COURSE' ? 'badge badge-green' : 'badge badge-blue'}>
-                          {row.type === 'COURSE' ? '课程' : '任务'}
+                        <span
+                          className={
+                            row.type === 'COURSE'
+                              ? 'badge badge-green'
+                              : row.type === 'ACTIVITY'
+                                ? 'badge badge-yellow'
+                                : 'badge badge-blue'
+                          }
+                        >
+                          {row.type === 'COURSE' ? '课程' : row.type === 'ACTIVITY' ? '活动' : '任务'}
                         </span>
                       </li>
                     ))}
@@ -1423,8 +1708,8 @@ export default function DashboardPage() {
                 <p className="topbar-muted">{t('studentHome.courses.empty')}</p>
               ) : (
                 <ul className="dashboard-student-list">
-                  {todayCourses.map((row) => (
-                    <li key={row.id} className="dashboard-student-item">
+                  {todayCourses.map((row, idx) => (
+                    <li key={`${row.id}-${idx}`} className="dashboard-student-item">
                       <div>
                         <strong>
                           {triField(row as unknown as Record<string, unknown>, 'course', locale) || t('title')}
@@ -1441,26 +1726,20 @@ export default function DashboardPage() {
             </div>
 
             <div className="dashboard-student-card">
-              <div className="dashboard-student-card-title">{t('studentHome.recommendations.title')}</div>
+              <div className="dashboard-student-card-title">
+                {t('studentHome.recommendations.title')} · 已优化
+              </div>
               {todayTaskCards.length === 0 ? (
                 <p className="topbar-muted">{t('studentHome.recommendations.empty')}</p>
               ) : (
                 <ul className="dashboard-student-list">
                   {todayTaskCards.map((row) => (
-                    <li key={row.id} className="dashboard-student-item">
-                      <div>
+                    <li key={row.id} className="dashboard-student-item dashboard-student-item-compact">
+                      <div style={{ minWidth: 0 }}>
                         <strong>
                           {row.order ? `${t('studentHome.recommendations.order', { order: row.order })} · ` : ''}
                           {row.title}
                         </strong>
-                        <div className="topbar-muted" style={{ marginTop: 3, fontSize: 12 }}>
-                          {t('common.due')}: {formatDateTimeShort(row.dueAt)}
-                        </div>
-                        {row.reasons.length > 0 ? (
-                          <div className="topbar-muted" style={{ marginTop: 3, fontSize: 12 }}>
-                            {row.reasons.map((code) => recommendationReasonLabel(code)).join(' · ')}
-                          </div>
-                        ) : null}
                       </div>
                       <span
                         className={`dashboard-priority-pill dashboard-priority-${row.priority.toLowerCase()}`}
@@ -1473,16 +1752,22 @@ export default function DashboardPage() {
               )}
             </div>
 
-            <div className="dashboard-student-card">
-              <div className="dashboard-student-card-title">{t('studentHome.ai.title')}</div>
+            <div className="dashboard-student-card dashboard-student-card-ai">
+              <div className="dashboard-ai-title-row">
+                <div className="dashboard-student-card-title" style={{ marginBottom: 0 }}>
+                  {t('studentHome.ai.title')} · 已优化
+                </div>
+                <span className="dashboard-ai-badge">AI</span>
+              </div>
+              <p className="topbar-muted dashboard-ai-hint">{t('studentHome.ai.hint')}</p>
               {aiSuggestions.length === 0 ? (
                 <p className="topbar-muted">{t('studentHome.ai.empty')}</p>
               ) : (
                 <ul className="dashboard-student-list">
                   {aiSuggestions.map((row, idx) => (
-                    <li key={`${idx}-${row}`} className="dashboard-student-item">
+                    <li key={`${idx}-${row}`} className="dashboard-student-item dashboard-ai-item">
                       <span className="dashboard-ai-index">{idx + 1}</span>
-                      <span>{row}</span>
+                      <span className="dashboard-ai-text">{row}</span>
                     </li>
                   ))}
                 </ul>
@@ -1541,11 +1826,6 @@ export default function DashboardPage() {
                   </button>
                 ))}
               </div>
-            </div>
-            <div className="dashboard-org-kpis" style={{ marginBottom: 10 }}>
-              <span className="badge badge-green">已启用组织 {orgStatusStats.active}</span>
-              <span className="badge badge-red">已暂停组织 {orgStatusStats.paused}</span>
-              <span className="badge badge-blue">可见组织总数 {orgStatusStats.total}</span>
             </div>
             <div className="dashboard-stats-grid">
               <div className="dashboard-stat-card">
@@ -1606,37 +1886,95 @@ export default function DashboardPage() {
                   暂无近期活动安排
                 </p>
               ) : (
-                <div className="dashboard-activity-strip" style={{ marginTop: 10 }}>
-                  <div className="dashboard-activity-strip-track" />
-                  {activityStripRows(orgUpcomingActivityItems.slice(0, 6)).map((row) => (
-                    <div key={row.id} className="dashboard-activity-strip-row">
-                      <div className="dashboard-activity-strip-meta">
-                        <strong>{row.title}</strong>
-                        <span className="topbar-muted">{formatDateTimeShort(row.startAt)}</span>
+                <div
+                  style={{
+                    marginTop: 10,
+                    display: 'grid',
+                    gap: 10,
+                    gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
+                  }}
+                >
+                  {orgCalendarDays.map((day) => (
+                    <div
+                      key={day.key}
+                      className="dashboard-viz-card"
+                      style={{
+                        padding: 10,
+                        background:
+                          day.items.length === 0
+                            ? '#ffffff'
+                            : day.items.some((item) => item.status === 'BLOCKED')
+                              ? 'rgba(239, 68, 68, 0.08)'
+                              : day.items.some((item) => item.status === 'IN_PROGRESS')
+                                ? 'rgba(59, 130, 246, 0.10)'
+                                : day.items.every((item) => item.status === 'DONE')
+                                  ? 'rgba(16, 185, 129, 0.10)'
+                                  : 'rgba(245, 158, 11, 0.10)',
+                        borderColor:
+                          day.items.length === 0
+                            ? 'var(--border)'
+                            : day.items.some((item) => item.status === 'BLOCKED')
+                              ? 'rgba(239, 68, 68, 0.45)'
+                              : day.items.some((item) => item.status === 'IN_PROGRESS')
+                                ? 'rgba(59, 130, 246, 0.45)'
+                                : day.items.every((item) => item.status === 'DONE')
+                                  ? 'rgba(16, 185, 129, 0.45)'
+                                  : 'rgba(245, 158, 11, 0.45)',
+                      }}
+                    >
+                      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
+                        <strong>{day.label}</strong>
+                        <span className="topbar-muted" style={{ fontSize: 12 }}>
+                          {day.weekday}
+                        </span>
                       </div>
-                      <div
-                        className="dashboard-activity-strip-fill dashboard-activity-strip-fill-org"
-                        style={{ left: `${row.leftPct}%`, width: `${row.widthPct}%` }}
-                      />
+                      <div className="topbar-muted" style={{ marginTop: 4, fontSize: 12 }}>
+                        当日活动 {day.items.length} 场
+                        {day.overlapCount > 0 ? ` · 时间冲突 ${day.overlapCount} 处` : ''}
+                      </div>
+                      {day.items.length === 0 ? (
+                        <div className="topbar-muted" style={{ marginTop: 8, fontSize: 12 }}>
+                          暂无安排
+                        </div>
+                      ) : (
+                        <div style={{ marginTop: 8, display: 'grid', gap: 8 }}>
+                          {day.items.slice(0, 4).map((item) => {
+                            const startMinutes = item.start.getHours() * 60 + item.start.getMinutes();
+                            const endMinutes = item.end.getHours() * 60 + item.end.getMinutes();
+                            const leftPct = clampNumber(((startMinutes - 360) / (17 * 60)) * 100, 0, 100);
+                            const widthPct = clampNumber((Math.max(endMinutes - startMinutes, 45) / (17 * 60)) * 100, 8, 100);
+                            return (
+                              <div key={item.id} style={{ display: 'grid', gap: 4 }}>
+                                <div style={{ display: 'flex', justifyContent: 'space-between', gap: 6 }}>
+                                  <span style={{ fontSize: 13, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                                    {item.title}
+                                  </span>
+                                  <span className={taskStatusBadgeClass(item.status)}>{taskStatusLabel(item.status)}</span>
+                                </div>
+                                <div className="topbar-muted" style={{ fontSize: 12 }}>
+                                  {formatHourMinuteLabel(item.start.toISOString())}-{formatHourMinuteLabel(item.end.toISOString())}
+                                </div>
+                                <div style={{ position: 'relative', height: 6, background: 'rgba(148,163,184,.25)', borderRadius: 999 }}>
+                                  <div
+                                    style={{
+                                      position: 'absolute',
+                                      left: `${leftPct}%`,
+                                      width: `${widthPct}%`,
+                                      height: '100%',
+                                      borderRadius: 999,
+                                      background: 'linear-gradient(90deg,#14b8a6,#0ea5e9)',
+                                    }}
+                                  />
+                                </div>
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>
               )}
-              {orgActivityTimelineItems.length > 0 ? (
-                <ul className="dashboard-simple-list" style={{ marginTop: 10 }}>
-                  {orgActivityTimelineItems.slice(0, 3).map((row) => (
-                    <li key={row.id} className="dashboard-simple-item">
-                      <div>
-                        <div>{row.title}</div>
-                        <div className="topbar-muted" style={{ fontSize: 12 }}>
-                          {formatDateTimeShort(row.startAt)} - {formatDateTimeShort(row.endAt)}
-                        </div>
-                      </div>
-                      <span className="badge badge-blue">{row.status || 'TODO'}</span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
             </div>
           </div>
         </div>

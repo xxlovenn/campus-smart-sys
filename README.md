@@ -2,6 +2,21 @@
 
 比赛交付物：前后端源码 + `docker-compose.yml` + `Dockerfile(s)` + `.env.example` + 部署文档。
 
+## 赛事提交对照清单
+
+### 必交文件（已覆盖）
+
+- `docker-compose.yml`：一键部署核心编排
+- `Dockerfile(s)`：`backend/Dockerfile`、`frontend/Dockerfile`
+- `.env.example`：环境变量模板（可直接复制）
+- `README.md`：完整部署与答辩指引
+- 完整项目源码：`backend/` + `frontend/`
+
+### 可选增强项（建议）
+
+- `init-data/`：数据库初始化扩展脚本（当前已提供）
+- API 文档：可在答辩时补充接口说明或演示录屏
+
 ## 功能概览
 
 - **学生时间与任务管理**：个人计划、时间轴视图、课表（含模拟学校 API 合并）、即将到期汇总。
@@ -22,9 +37,11 @@
 git clone <你的 GitHub 仓库地址>
 cd Campus_Smart_Sys
 cp .env.example .env
-# 建议编辑 .env：修改 POSTGRES_PASSWORD 与 JWT_SECRET
 docker compose up -d --build
 ```
+
+> 按赛事标准流程，执行以上 4 条命令即可完成部署。  
+> 若仅用于现场评审，可不修改 `.env` 直接启动；若长期运行，建议再修改 `POSTGRES_PASSWORD` 与 `JWT_SECRET`。
 
 访问：
 
@@ -60,6 +77,13 @@ docker compose exec backend npm run db:reseed
 | 学生     | `student@campus.demo` | 课表/计划/任务/档案 |
 | 社团负责人 | `org@campus.demo`     | 可创建组织任务     |
 | 团委管理员 | `league@campus.demo`  | 组织管理、全局任务、档案审核 |
+
+## 评审快速验收（建议照此顺序）
+
+1. 执行 `docker compose up -d --build`，确认容器全部 `healthy`。
+2. 打开前端 `http://localhost:3000/zh`，确认页面可访问。
+3. 使用默认账号登录，确认可进入系统并加载业务数据。
+4. 演示“时间轴/任务/档案审核/多语言切换”四个核心场景。
 
 ## 演示指引（答辩建议路径）
 
@@ -100,6 +124,14 @@ git branch -M main
 git remote add origin https://github.com/<你的用户名>/<仓库名>.git
 git push -u origin main
 ```
+
+## 提交前自检（建议）
+
+- 仓库可被评委访问（`public` 或已授予评委账号权限）
+- `README.md` 中命令可直接复现，无额外隐含步骤
+- `docker compose up -d --build` 可一次成功
+- 默认演示账号可登录并完成核心功能演示
+- 截止时间前最后一次 `commit` 为评审版本
 
 ## 技术栈
 

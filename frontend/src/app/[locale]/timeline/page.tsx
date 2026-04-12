@@ -7,9 +7,13 @@ import { confirmAction } from '@/lib/confirm';
 import { triField } from '@/lib/tri';
 import { useAuthGuard } from '@/lib/use-auth-guard';
 
+const TIMELINE_SYNC_KEY = 'studentTimelineSyncV1';
+
 type Me = { id: string; role: string };
 type TimelineRange = 'DAY' | 'WEEK' | 'MONTH';
 type PlanStatus = 'TODO' | 'DONE';
+type TimelineItemType = 'PLAN' | 'TASK' | 'COURSE' | 'ACTIVITY';
+type TimelineSourceKind = 'SCHEDULE' | 'PLAN' | 'CAMPUS_TASK' | 'ORG_ACTIVITY';
 type PlanRow = Record<string, unknown> & {
   id: string;
   titleZh?: string;
@@ -24,7 +28,23 @@ type PlanRow = Record<string, unknown> & {
   status?: PlanStatus;
 };
 type ScheduleRow = Record<string, unknown> & { id: string; weekday?: number; startTime?: string; endTime?: string };
-type TaskRow = Record<string, unknown> & { id: string; startAt?: string; endAt?: string; dueAt?: string };
+type TaskRow = Record<string, unknown> & {
+  id: string;
+  startAt?: string;
+  endAt?: string;
+  dueAt?: string;
+  status?: string;
+  source?: string;
+};
+type TimelineDisplayItem = {
+  id: string;
+  title: string;
+  start: Date;
+  end: Date | null;
+  type: TimelineItemType;
+  detail: string;
+  sourceKind: TimelineSourceKind;
+};
 
 function toLocalDateTimeValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -53,6 +73,43 @@ function toTimeMs(value: unknown) {
   return Number.isNaN(d.getTime()) ? Number.MAX_SAFE_INTEGER : d.getTime();
 }
 
+function startOfDay(date: Date) {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  return d;
+}
+
+function startOfWeekMonday(date: Date) {
+  const d = startOfDay(date);
+  const weekday = d.getDay() === 0 ? 7 : d.getDay();
+  d.setDate(d.getDate() - (weekday - 1));
+  return d;
+}
+
+function startOfMonth(date: Date) {
+  return new Date(date.getFullYear(), date.getMonth(), 1, 0, 0, 0, 0);
+}
+
+function addDays(date: Date, days: number) {
+  const d = new Date(date);
+  d.setDate(d.getDate() + days);
+  return d;
+}
+
+function combineDateTime(day: Date, hhmm?: string) {
+  if (!hhmm) return null;
+  const [h, m] = String(hhmm).split(':').map((n) => Number(n));
+  if (!Number.isFinite(h) || !Number.isFinite(m)) return null;
+  const d = new Date(day);
+  d.setHours(h, m, 0, 0);
+  return d;
+}
+
+function ymd(date: Date) {
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
 export default function TimelinePage() {
   const locale = useLocale();
   const t = useTranslations('timeline');
@@ -63,6 +120,12 @@ export default function TimelinePage() {
   const [tasks, setTasks] = useState<TaskRow[]>([]);
   const [q, setQ] = useState('');
   const [range, setRange] = useState<TimelineRange>('WEEK');
+  const [activeSources, setActiveSources] = useState<TimelineSourceKind[]>([
+    'SCHEDULE',
+    'PLAN',
+    'CAMPUS_TASK',
+    'ORG_ACTIVITY',
+  ]);
   const [err, setErr] = useState<string | null>(null);
   const [editing, setEditing] = useState<PlanRow | null>(null);
   const [form, setForm] = useState(() => {
@@ -100,27 +163,43 @@ export default function TimelinePage() {
     load();
   }, [load]);
 
-  const rangeStart = useMemo(() => {
-    const now = new Date();
-    if (range === 'DAY') {
-      now.setHours(0, 0, 0, 0);
-      return now.getTime();
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.localStorage.getItem(TIMELINE_SYNC_KEY);
+      if (!raw) return;
+      const parsed = JSON.parse(raw) as { range?: TimelineRange };
+      if (parsed.range && ['DAY', 'WEEK', 'MONTH'].includes(parsed.range)) {
+        setRange(parsed.range);
+      }
+    } catch {
+      // ignore malformed storage payload
     }
-    if (range === 'WEEK') return now.getTime();
-    return now.getTime();
-  }, [range]);
-  const rangeEnd = useMemo(() => {
-    const now = new Date();
-    if (range === 'DAY') {
-      now.setHours(23, 59, 59, 999);
-      return now.getTime();
-    }
-    if (range === 'WEEK') return now.getTime() + 7 * 24 * 60 * 60 * 1000;
-    return now.getTime() + 30 * 24 * 60 * 60 * 1000;
+  }, []);
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    window.localStorage.setItem(TIMELINE_SYNC_KEY, JSON.stringify({ range }));
   }, [range]);
 
+  const windowStart = useMemo(() => {
+    const now = new Date();
+    if (range === 'DAY') return startOfDay(now);
+    if (range === 'WEEK') return startOfWeekMonday(now);
+    return startOfMonth(now);
+  }, [range]);
+  const windowEnd = useMemo(() => {
+    if (range === 'DAY') return addDays(windowStart, 1);
+    if (range === 'WEEK') return addDays(windowStart, 7);
+    return new Date(windowStart.getFullYear(), windowStart.getMonth() + 1, 1, 0, 0, 0, 0);
+  }, [range, windowStart]);
+
   const mergedTimeline = useMemo(() => {
-    const planItems = plans.map((row) => ({
+    const rangeStart = windowStart.getTime();
+    const rangeEnd = windowEnd.getTime();
+    const planItems = plans
+      .filter((row) => String(row.source ?? 'PERSONAL') === 'PERSONAL')
+      .map((row) => ({
       id: `plan-${row.id}`,
       title: triField(row, 'title', locale) || t('labels.plan'),
       time: row.startAt ?? row.dueAt ?? row.endAt ?? null,
@@ -144,12 +223,187 @@ export default function TimelinePage() {
         return !needle || JSON.stringify(row).toLowerCase().includes(needle);
       })
       .sort((a, b) => toTimeMs(a.time) - toTimeMs(b.time));
-  }, [locale, plans, q, rangeEnd, rangeStart, tasks]);
+  }, [locale, plans, q, tasks, t, windowEnd, windowStart]);
+
+  const timelineDisplayEvents = useMemo<TimelineDisplayItem[]>(() => {
+    const startTs = windowStart.getTime();
+    const endTs = windowEnd.getTime();
+    const planEvents: TimelineDisplayItem[] = plans
+      .filter((row) => String(row.source ?? 'PERSONAL') === 'PERSONAL')
+      .map((row) => {
+        const startValue = row.startAt ?? row.dueAt ?? row.endAt;
+        const start = startValue ? new Date(String(startValue)) : null;
+        const end = row.endAt ? new Date(String(row.endAt)) : null;
+        if (!start || Number.isNaN(start.getTime())) return null;
+        return {
+          id: `plan-${row.id}`,
+          title: triField(row, 'title', locale) || t('labels.plan'),
+          start,
+          end: end && !Number.isNaN(end.getTime()) ? end : null,
+          type: 'PLAN',
+          detail: triField(row, 'note', locale) || '',
+          sourceKind: 'PLAN',
+        };
+      })
+      .filter((row): row is TimelineDisplayItem => Boolean(row));
+
+    const taskEvents: TimelineDisplayItem[] = tasks
+      .filter((row) => row.status !== 'DONE')
+      .map((row) => {
+        const startValue = row.startAt ?? row.endAt ?? row.dueAt;
+        const start = startValue ? new Date(String(startValue)) : null;
+        const end = row.endAt ? new Date(String(row.endAt)) : null;
+        if (!start || Number.isNaN(start.getTime())) return null;
+        const isActivity = row.source === 'ORG_REQUEST';
+        return {
+          id: `task-${row.id}`,
+          title:
+            `${isActivity ? `${t('labels.activity')} · ` : ''}${
+              triField(row, 'title', locale) || t('labels.task')
+            }`,
+          start,
+          end: end && !Number.isNaN(end.getTime()) ? end : null,
+          type: isActivity ? 'ACTIVITY' : 'TASK',
+          detail: triField(row, 'desc', locale) || '',
+          sourceKind: isActivity ? 'ORG_ACTIVITY' : 'CAMPUS_TASK',
+        };
+      })
+      .filter((row): row is TimelineDisplayItem => Boolean(row));
+
+    const scheduleEvents: TimelineDisplayItem[] = [];
+    for (const row of schedule) {
+      const weekday = Number(row.weekday ?? 0);
+      if (!Number.isFinite(weekday) || weekday < 1 || weekday > 7) continue;
+      for (let d = new Date(windowStart); d < windowEnd; d = addDays(d, 1)) {
+        const wd = d.getDay() === 0 ? 7 : d.getDay();
+        if (wd !== weekday) continue;
+        const start = combineDateTime(d, row.startTime);
+        if (!start) continue;
+        const end = combineDateTime(d, row.endTime);
+        scheduleEvents.push({
+          id: `schedule-${row.id}-${ymd(d)}`,
+          title: triField(row, 'course', locale) || t('scheduleSection.title'),
+          start,
+          end,
+          type: 'COURSE',
+          detail: triField(row, 'location', locale) || '',
+          sourceKind: 'SCHEDULE',
+        });
+      }
+    }
+
+    return [...planEvents, ...taskEvents, ...scheduleEvents]
+      .filter((row) => {
+        const ts = row.start.getTime();
+        if (ts < startTs || ts >= endTs) return false;
+        return true;
+      })
+      .sort((a, b) => a.start.getTime() - b.start.getTime());
+  }, [locale, plans, schedule, t, tasks, windowEnd, windowStart]);
+
+  const filteredTimelineEvents = useMemo(() => {
+    const needle = q.trim().toLowerCase();
+    return timelineDisplayEvents.filter((row) => {
+      if (!activeSources.includes(row.sourceKind)) return false;
+      if (!needle) return true;
+      return JSON.stringify(row).toLowerCase().includes(needle);
+    });
+  }, [activeSources, q, timelineDisplayEvents]);
 
   const scopedPlans = useMemo(
     () => mergedTimeline.filter((row) => row.type === 'PLAN').slice(0, 20),
     [mergedTimeline],
   );
+  const dayHours = useMemo(() => Array.from({ length: 24 }, (_, idx) => idx), []);
+  const weekHours = useMemo(() => Array.from({ length: 16 }, (_, idx) => idx + 6), []);
+  const weekdayHeaders = useMemo(() => {
+    if (locale.startsWith('zh')) return ['周一', '周二', '周三', '周四', '周五', '周六', '周日'];
+    if (locale.startsWith('ru')) return ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
+    return ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+  }, [locale]);
+  const dayEventsByHour = useMemo(() => {
+    const map = new Map<number, TimelineDisplayItem[]>();
+    for (const event of filteredTimelineEvents) {
+      const hour = event.start.getHours();
+      const rows = map.get(hour) ?? [];
+      rows.push(event);
+      map.set(hour, rows);
+    }
+    return map;
+  }, [filteredTimelineEvents]);
+  const weekDates = useMemo(() => Array.from({ length: 7 }, (_, idx) => addDays(windowStart, idx)), [windowStart]);
+  const weekEventsByCell = useMemo(() => {
+    const map = new Map<string, TimelineDisplayItem[]>();
+    for (const event of filteredTimelineEvents) {
+      const weekdayIdx = (event.start.getDay() + 6) % 7;
+      const hour = event.start.getHours();
+      const key = `${weekdayIdx}-${hour}`;
+      const rows = map.get(key) ?? [];
+      rows.push(event);
+      map.set(key, rows);
+    }
+    return map;
+  }, [filteredTimelineEvents]);
+  const monthMeta = useMemo(() => {
+    const year = windowStart.getFullYear();
+    const month = windowStart.getMonth();
+    const first = new Date(year, month, 1);
+    const days = new Date(year, month + 1, 0).getDate();
+    const offset = (first.getDay() + 6) % 7;
+    const cells: Array<Date | null> = [];
+    for (let i = 0; i < offset; i += 1) cells.push(null);
+    for (let day = 1; day <= days; day += 1) cells.push(new Date(year, month, day));
+    while (cells.length % 7 !== 0) cells.push(null);
+    return { cells, days };
+  }, [windowStart]);
+  const monthEventsByDate = useMemo(() => {
+    const map = new Map<string, TimelineDisplayItem[]>();
+    for (const event of filteredTimelineEvents) {
+      const key = ymd(event.start);
+      const rows = map.get(key) ?? [];
+      rows.push(event);
+      map.set(key, rows);
+    }
+    return map;
+  }, [filteredTimelineEvents]);
+  const sourceStats = useMemo(() => {
+    const countBy = (kind: TimelineSourceKind) =>
+      timelineDisplayEvents.filter((row) => row.sourceKind === kind).length;
+    return {
+      schedule: countBy('SCHEDULE'),
+      plan: countBy('PLAN'),
+      campusTask: countBy('CAMPUS_TASK'),
+      orgActivity: countBy('ORG_ACTIVITY'),
+    };
+  }, [timelineDisplayEvents]);
+  const upcomingHighlights = useMemo(() => {
+    const now = Date.now();
+    const horizon = now + 48 * 60 * 60 * 1000;
+    return filteredTimelineEvents
+      .filter((row) => {
+        const ts = row.start.getTime();
+        return ts >= now && ts <= horizon;
+      })
+      .slice(0, 8);
+  }, [filteredTimelineEvents]);
+  const sourceChipLabel = useCallback(
+    (kind: TimelineSourceKind) => {
+      if (kind === 'SCHEDULE') return t('sources.schedule');
+      if (kind === 'PLAN') return t('sources.plan');
+      if (kind === 'CAMPUS_TASK') return t('sources.campusTask');
+      return t('sources.orgActivity');
+    },
+    [t],
+  );
+  const toggleSource = useCallback((kind: TimelineSourceKind) => {
+    setActiveSources((prev) => {
+      if (prev.includes(kind)) {
+        if (prev.length === 1) return prev;
+        return prev.filter((k) => k !== kind);
+      }
+      return [...prev, kind];
+    });
+  }, []);
 
   async function addPlan(e: React.FormEvent) {
     e.preventDefault();
@@ -262,6 +516,24 @@ export default function TimelinePage() {
         {err ? <p style={{ color: 'var(--danger)' }}>{err}</p> : null}
 
         <div className="card-soft" style={{ display: 'grid', gap: 10 }}>
+          <div className="dashboard-stats-grid" style={{ gridTemplateColumns: 'repeat(4, minmax(0, 1fr))' }}>
+            <div className="dashboard-stat-card">
+              <div className="topbar-muted">{t('sources.schedule')}</div>
+              <strong className="dashboard-stat-value">{sourceStats.schedule}</strong>
+            </div>
+            <div className="dashboard-stat-card">
+              <div className="topbar-muted">{t('sources.plan')}</div>
+              <strong className="dashboard-stat-value">{sourceStats.plan}</strong>
+            </div>
+            <div className="dashboard-stat-card">
+              <div className="topbar-muted">{t('sources.campusTask')}</div>
+              <strong className="dashboard-stat-value">{sourceStats.campusTask}</strong>
+            </div>
+            <div className="dashboard-stat-card">
+              <div className="topbar-muted">{t('sources.orgActivity')}</div>
+              <strong className="dashboard-stat-value">{sourceStats.orgActivity}</strong>
+            </div>
+          </div>
           <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             {([
               ['DAY', t('range.day')],
@@ -285,24 +557,152 @@ export default function TimelinePage() {
             />
             <button type="button" onClick={load}>{t('actions.refresh')}</button>
           </div>
-          <ul className="list-clean">
-            {mergedTimeline.length === 0 ? (
-              <li className="list-item topbar-muted">{t('empty.range')}</li>
-            ) : (
-              mergedTimeline.map((row) => (
-                <li key={row.id} className="list-item">
-                  <div style={{ display: 'flex', justifyContent: 'space-between', gap: 10, flexWrap: 'wrap' }}>
-                    <strong>{row.title}</strong>
-                    <span className={`badge ${row.type === 'PLAN' ? 'badge-blue' : 'badge-green'}`}>
-                      {row.type === 'PLAN' ? t('labels.plan') : t('labels.task')}
-                    </span>
-                  </div>
-                  <div className="topbar-muted" style={{ marginTop: 6 }}>{formatDateTime(row.time, locale)}</div>
-                  {row.detail ? <div className="topbar-muted" style={{ marginTop: 4 }}>{row.detail}</div> : null}
-                </li>
-              ))
-            )}
-          </ul>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+            {(['SCHEDULE', 'PLAN', 'CAMPUS_TASK', 'ORG_ACTIVITY'] as TimelineSourceKind[]).map((kind) => (
+              <button
+                key={kind}
+                type="button"
+                className={`dashboard-chip ${activeSources.includes(kind) ? 'dashboard-chip-active' : ''}`}
+                onClick={() => toggleSource(kind)}
+              >
+                {sourceChipLabel(kind)}
+              </button>
+            ))}
+          </div>
+          {filteredTimelineEvents.length === 0 ? (
+            <div className="topbar-muted">{t('empty.range')}</div>
+          ) : null}
+          {upcomingHighlights.length > 0 ? (
+            <div className="dashboard-empty-card" style={{ marginTop: 0 }}>
+              <strong>{t('upcoming')}</strong>
+              <ul className="list-clean" style={{ marginTop: 6 }}>
+                {upcomingHighlights.map((row) => (
+                  <li key={`upcoming-${row.id}`} className="list-item" style={{ paddingTop: 6, paddingBottom: 6 }}>
+                    <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
+                      <span>{row.title}</span>
+                      <span className="topbar-muted" style={{ fontSize: 12 }}>
+                        {sourceChipLabel(row.sourceKind)}
+                      </span>
+                    </div>
+                    <div className="topbar-muted" style={{ fontSize: 12 }}>
+                      {formatDateTime(row.start, locale)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+          <div className="timeline-table-wrap">
+            {range === 'DAY' ? (
+              <table className="timeline-table">
+                <thead>
+                  <tr>
+                    <th>{t('range.day')}</th>
+                    {dayHours.map((hour) => (
+                      <th key={hour}>{String(hour).padStart(2, '0')}:00</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>{windowStart.toLocaleDateString(locale)}</td>
+                    {dayHours.map((hour) => {
+                      const rows = dayEventsByHour.get(hour) ?? [];
+                      return (
+                        <td key={hour}>
+                          <div className="timeline-cell-stack">
+                            {rows.slice(0, 3).map((row) => (
+                              <div key={row.id} className={`timeline-event-chip timeline-chip-${row.type.toLowerCase()}`}>
+                                {String(row.start.getHours()).padStart(2, '0')}:{String(row.start.getMinutes()).padStart(2, '0')} {row.title}
+                              </div>
+                            ))}
+                            {rows.length > 3 ? <div className="topbar-muted">+{rows.length - 3}</div> : null}
+                          </div>
+                        </td>
+                      );
+                    })}
+                  </tr>
+                </tbody>
+              </table>
+            ) : null}
+
+            {range === 'WEEK' ? (
+              <table className="timeline-table">
+                <thead>
+                  <tr>
+                    <th>{t('range.week')}</th>
+                    {weekdayHeaders.map((day, idx) => (
+                      <th key={day}>
+                        {day}
+                        <div className="topbar-muted" style={{ fontSize: 11 }}>
+                          {weekDates[idx].toLocaleDateString(locale)}
+                        </div>
+                      </th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {weekHours.map((hour) => (
+                    <tr key={hour}>
+                      <td>{String(hour).padStart(2, '0')}:00</td>
+                      {weekdayHeaders.map((_, weekdayIdx) => {
+                        const rows = weekEventsByCell.get(`${weekdayIdx}-${hour}`) ?? [];
+                        return (
+                          <td key={`${weekdayIdx}-${hour}`}>
+                            <div className="timeline-cell-stack">
+                              {rows.slice(0, 2).map((row) => (
+                                <div key={row.id} className={`timeline-event-chip timeline-chip-${row.type.toLowerCase()}`}>
+                                  {String(row.start.getHours()).padStart(2, '0')}:{String(row.start.getMinutes()).padStart(2, '0')} {row.title}
+                                </div>
+                              ))}
+                              {rows.length > 2 ? <div className="topbar-muted">+{rows.length - 2}</div> : null}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+
+            {range === 'MONTH' ? (
+              <table className="timeline-table">
+                <thead>
+                  <tr>
+                    {weekdayHeaders.map((day) => (
+                      <th key={day}>{day}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {Array.from({ length: Math.ceil(monthMeta.cells.length / 7) }, (_, rowIdx) => (
+                    <tr key={rowIdx}>
+                      {monthMeta.cells.slice(rowIdx * 7, rowIdx * 7 + 7).map((cell, colIdx) => {
+                        if (!cell) {
+                          return <td key={`empty-${rowIdx}-${colIdx}`} className="timeline-month-empty" />;
+                        }
+                        const rows = monthEventsByDate.get(ymd(cell)) ?? [];
+                        return (
+                          <td key={ymd(cell)} className="timeline-month-cell">
+                            <div className="timeline-month-day">{cell.getDate()}</div>
+                            <div className="timeline-cell-stack">
+                              {rows.slice(0, 3).map((row) => (
+                                <div key={row.id} className={`timeline-event-chip timeline-chip-${row.type.toLowerCase()}`}>
+                                  {String(row.start.getHours()).padStart(2, '0')}:{String(row.start.getMinutes()).padStart(2, '0')} {row.title}
+                                </div>
+                              ))}
+                              {rows.length > 3 ? <div className="topbar-muted">+{rows.length - 3}</div> : null}
+                            </div>
+                          </td>
+                        );
+                      })}
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : null}
+          </div>
         </div>
 
         <div className="page-section" style={{ marginTop: 16 }}>

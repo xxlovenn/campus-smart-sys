@@ -48,6 +48,15 @@ class UpdateProfileDto {
   @IsOptional()
   @IsString()
   identityRu?: string;
+  @IsOptional()
+  @IsString()
+  practiceZh?: string;
+  @IsOptional()
+  @IsString()
+  practiceEn?: string;
+  @IsOptional()
+  @IsString()
+  practiceRu?: string;
 }
 
 class AwardDto {
@@ -170,6 +179,15 @@ class AdminUpdateUserProfileDto {
   @IsOptional()
   @IsString()
   identityRu?: string;
+  @IsOptional()
+  @IsString()
+  practiceZh?: string;
+  @IsOptional()
+  @IsString()
+  practiceEn?: string;
+  @IsOptional()
+  @IsString()
+  practiceRu?: string;
 }
 
 class CreateMetaOptionDto {

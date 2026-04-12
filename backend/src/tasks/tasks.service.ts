@@ -35,6 +35,7 @@ const ORG_REVIEW = {
   APPROVED: 'APPROVED',
   REJECTED: 'REJECTED',
 } as const;
+const DELETE_REQUEST_PREFIX = 'DELETE_REQUEST::';
 
 type RecommendationCode =
   | 'overdue'
@@ -88,6 +89,10 @@ export class TasksService {
     return d;
   }
 
+  private isDeleteRequestTask(task: { reviewNote?: string | null }) {
+    return typeof task.reviewNote === 'string' && task.reviewNote.startsWith(DELETE_REQUEST_PREFIX);
+  }
+
   private async inManagedScope(taskId: string, primaryOrgId: string | null, managedOrgIds: string[]) {
     if (managedOrgIds.length === 0) return false;
     if (primaryOrgId && managedOrgIds.includes(primaryOrgId)) return true;
@@ -106,22 +111,84 @@ export class TasksService {
     if (!task || task.approvalStatus !== APPROVAL.APPROVED) return;
 
     const memberIds = await this.resolveTargetStudentIds(task);
+    const existing = await this.prisma.personalPlan.findMany({
+      where: { upstreamTaskId: taskId, source: PlanSource.ORG_TASK },
+      select: { id: true, userId: true },
+    });
+    const existingUserIds = new Set(existing.map((row) => row.userId));
+    const targetUserIds = new Set(memberIds);
+
+    const removedUserIds = Array.from(existingUserIds).filter((userId) => !targetUserIds.has(userId));
+    if (removedUserIds.length > 0) {
+      await this.prisma.personalPlan.deleteMany({
+        where: {
+          upstreamTaskId: taskId,
+          source: PlanSource.ORG_TASK,
+          userId: { in: removedUserIds },
+        },
+      });
+    }
 
     if (memberIds.length === 0) return;
 
-    await this.prisma.personalPlan.createMany({
-      data: memberIds.map((userId) => ({
-        userId,
-        titleZh: task.titleZh,
-        titleEn: task.titleEn,
-        titleRu: task.titleRu,
-        source: PlanSource.ORG_TASK,
-        dueAt: task.dueAt ?? task.endAt ?? null,
-        startAt: task.startAt ?? null,
-        endAt: task.endAt ?? null,
-        syncedToTimeline: true,
-      })),
+    await this.prisma.$transaction(
+      memberIds.map((userId) =>
+        this.prisma.personalPlan.upsert({
+          where: {
+            userId_upstreamTaskId: {
+              userId,
+              upstreamTaskId: taskId,
+            },
+          },
+          create: {
+            userId,
+            titleZh: task.titleZh,
+            titleEn: task.titleEn,
+            titleRu: task.titleRu,
+            noteZh: task.descZh ?? '',
+            noteEn: task.descEn ?? '',
+            noteRu: task.descRu ?? '',
+            source: PlanSource.ORG_TASK,
+            upstreamTaskId: taskId,
+            dueAt: task.dueAt ?? task.endAt ?? null,
+            startAt: task.startAt ?? null,
+            endAt: task.endAt ?? null,
+            syncedToTimeline: true,
+          },
+          update: {
+            titleZh: task.titleZh,
+            titleEn: task.titleEn,
+            titleRu: task.titleRu,
+            noteZh: task.descZh ?? '',
+            noteEn: task.descEn ?? '',
+            noteRu: task.descRu ?? '',
+            dueAt: task.dueAt ?? task.endAt ?? null,
+            startAt: task.startAt ?? null,
+            endAt: task.endAt ?? null,
+            syncedToTimeline: true,
+          },
+        }),
+      ),
+    );
+  }
+
+  private async clearTaskSyncedPlans(taskId: string) {
+    await this.prisma.personalPlan.deleteMany({
+      where: { upstreamTaskId: taskId, source: PlanSource.ORG_TASK },
     });
+  }
+
+  private async syncTaskTimelineMirror(taskId: string) {
+    const task = await this.prisma.task.findUnique({
+      where: { id: taskId },
+      select: { approvalStatus: true },
+    });
+    if (!task) return;
+    if (task.approvalStatus === APPROVAL.APPROVED) {
+      await this.syncApprovedTaskToMemberPlans(taskId);
+      return;
+    }
+    await this.clearTaskSyncedPlans(taskId);
   }
 
   private async resolveTargetStudentIds(task: any): Promise<string[]> {
@@ -477,6 +544,69 @@ export class TasksService {
     if (task.approvalStatus !== APPROVAL.PENDING) {
       throw new BadRequestException('Only pending requests can be reviewed');
     }
+    const isDeleteRequest = this.isDeleteRequestTask(task);
+
+    if (isDeleteRequest) {
+      if (approve) {
+        await this.prisma.taskOrganization.deleteMany({ where: { taskId } });
+        await this.prisma.taskOrgReview.deleteMany({ where: { taskId } });
+        await this.clearTaskSyncedPlans(taskId);
+        const deleted = await this.prisma.task.delete({ where: { id: taskId } });
+        await this.appendTaskLog({
+          action: 'TASK_DELETE_REQUEST_APPROVED',
+          taskId,
+          organizationId: task.primaryOrgId ?? null,
+          actorId: reviewerId,
+          detailZh: `团委批准删除活动：${task.titleZh}`,
+          detailEn: `League approved activity delete: ${task.titleEn}`,
+          detailRu: `Комитет одобрил удаление: ${task.titleRu}`,
+        });
+        await this.prisma.notification.create({
+          data: {
+            userId: task.creatorId,
+            titleZh: '活动删除申请已通过',
+            titleEn: 'Delete request approved',
+            titleRu: 'Запрос на удаление одобрен',
+            bodyZh: task.titleZh,
+            bodyEn: task.titleEn,
+            bodyRu: task.titleRu,
+          },
+        });
+        return { ...deleted, approvalStatus: 'DELETED' };
+      }
+
+      const rejected = await (this.prisma.task as any).update({
+        where: { id: taskId },
+        data: {
+          approvalStatus: APPROVAL.REJECTED,
+          reviewedById: reviewerId,
+          reviewNote: reason?.trim() || '删除申请未通过',
+        },
+      });
+      await this.syncTaskTimelineMirror(taskId);
+      await this.appendTaskLog({
+        action: 'TASK_DELETE_REQUEST_REJECTED',
+        taskId,
+        organizationId: task.primaryOrgId ?? null,
+        actorId: reviewerId,
+        detailZh: `团委驳回删除申请：${reason?.trim() || '未填写原因'}`,
+        detailEn: `League rejected delete request: ${reason?.trim() || 'No reason'}`,
+        detailRu: `Комитет отклонил удаление: ${reason?.trim() || 'Без причины'}`,
+      });
+      await this.prisma.notification.create({
+        data: {
+          userId: task.creatorId,
+          titleZh: '活动删除申请被驳回',
+          titleEn: 'Delete request rejected',
+          titleRu: 'Запрос на удаление отклонен',
+          bodyZh: task.titleZh,
+          bodyEn: task.titleEn,
+          bodyRu: task.titleRu,
+          taskId,
+        },
+      });
+      return rejected;
+    }
 
     const updated = await (this.prisma.task as any).update({
       where: { id: taskId },
@@ -498,9 +628,7 @@ export class TasksService {
     });
 
     const finalized = approve ? await this.finalizeTaskApproval(taskId) : updated;
-    if (finalized?.approvalStatus === APPROVAL.APPROVED) {
-      await this.syncApprovedTaskToMemberPlans(taskId);
-    }
+    await this.syncTaskTimelineMirror(taskId);
 
     await this.prisma.notification.create({
       data: {
@@ -592,9 +720,7 @@ export class TasksService {
     }
 
     const finalized = await this.finalizeTaskApproval(taskId);
-    if (finalized?.approvalStatus === APPROVAL.APPROVED) {
-      await this.syncApprovedTaskToMemberPlans(taskId);
-    }
+    await this.syncTaskTimelineMirror(taskId);
     await this.appendTaskLog({
       action: approve ? 'TASK_REVIEWED_BY_COORG_APPROVE' : 'TASK_REVIEWED_BY_COORG_REJECT',
       taskId,
@@ -746,9 +872,7 @@ export class TasksService {
       },
     });
 
-    if (task.approvalStatus === APPROVAL.APPROVED) {
-      await this.syncApprovedTaskToMemberPlans(task.id);
-    } else {
+    if (task.approvalStatus !== APPROVAL.APPROVED) {
       const leagueAdmins = await this.prisma.user.findMany({
         where: { role: UserRole.LEAGUE_ADMIN },
         select: { id: true },
@@ -768,6 +892,7 @@ export class TasksService {
         });
       }
     }
+    await this.syncTaskTimelineMirror(task.id);
 
     if (dto.assigneeId && task.approvalStatus === APPROVAL.APPROVED) {
       await this.prisma.notification.create({
@@ -938,6 +1063,8 @@ export class TasksService {
       detailRu: `Обновлено мероприятие: ${updated?.titleRu ?? task.titleRu}`,
     });
 
+    await this.syncTaskTimelineMirror(taskId);
+
     return updated;
   }
 
@@ -1022,6 +1149,48 @@ export class TasksService {
       if (!inManaged) {
         throw new ForbiddenException('No permission to delete this task');
       }
+      if (task.approvalStatus === APPROVAL.PENDING) {
+        throw new BadRequestException('Task is already pending review');
+      }
+
+      const pendingDelete = await (this.prisma.task as any).update({
+        where: { id: taskId },
+        data: {
+          approvalStatus: APPROVAL.PENDING,
+          reviewedById: null,
+          approvedAt: null,
+          reviewNote: `${DELETE_REQUEST_PREFIX}社团发起删除申请`,
+        },
+      });
+      await this.clearTaskSyncedPlans(taskId);
+      await this.appendTaskLog({
+        action: 'TASK_DELETE_REQUEST_SUBMITTED',
+        taskId,
+        organizationId: task.primaryOrgId ?? null,
+        actorId: userId,
+        detailZh: `提交删除申请：${task.titleZh}`,
+        detailEn: `Delete request submitted: ${task.titleEn}`,
+        detailRu: `Отправлен запрос на удаление: ${task.titleRu}`,
+      });
+      const leagueAdmins = await this.prisma.user.findMany({
+        where: { role: UserRole.LEAGUE_ADMIN },
+        select: { id: true },
+      });
+      if (leagueAdmins.length > 0) {
+        await this.prisma.notification.createMany({
+          data: leagueAdmins.map((admin) => ({
+            userId: admin.id,
+            titleZh: '收到活动删除申请',
+            titleEn: 'Delete request submitted',
+            titleRu: 'Поступил запрос на удаление',
+            bodyZh: task.titleZh,
+            bodyEn: task.titleEn,
+            bodyRu: task.titleRu,
+            taskId,
+          })),
+        });
+      }
+      return pendingDelete;
     }
 
     await this.prisma.taskOrganization.deleteMany({
@@ -1036,6 +1205,7 @@ export class TasksService {
       detailEn: `Deleted activity: ${task.titleEn}`,
       detailRu: `Удалено мероприятие: ${task.titleRu}`,
     });
+    await this.clearTaskSyncedPlans(taskId);
 
     return this.prisma.task.delete({
       where: { id: taskId },

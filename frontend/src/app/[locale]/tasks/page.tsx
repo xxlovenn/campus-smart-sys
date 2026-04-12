@@ -74,23 +74,6 @@ type RequestReviewPayload = {
   reason?: string;
 };
 type OrgReviewPayload = { approve: boolean; reason?: string };
-type TimelinePlanRow = Record<string, unknown> & {
-  id: string;
-  titleZh?: string;
-  titleEn?: string;
-  titleRu?: string;
-  dueAt?: string;
-};
-type ScheduleEntryRow = Record<string, unknown> & {
-  id: string;
-  courseZh?: string;
-  courseEn?: string;
-  courseRu?: string;
-  weekday?: number;
-  startTime?: string;
-  endTime?: string;
-  source?: string;
-};
 type TaskChangeLog = {
   id: string;
   action: string;
@@ -100,6 +83,7 @@ type TaskChangeLog = {
   createdAt?: string;
   actor?: { name?: string; email?: string } | null;
 };
+const DELETE_REQUEST_PREFIX = 'DELETE_REQUEST::';
 
 function toLocalDateTimeValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -150,6 +134,10 @@ function approvalLabel(approval?: string) {
   return '待审核';
 }
 
+function isDeleteRequest(task: Task) {
+  return typeof task.reviewNote === 'string' && task.reviewNote.startsWith(DELETE_REQUEST_PREFIX);
+}
+
 function sourceLabel(task: Task, locale: string, isOrgAdmin: boolean) {
   if (task.source === 'LEAGUE_PUBLISHED') return '团委发布';
   if (isOrgAdmin) return '本社团';
@@ -185,8 +173,6 @@ export default function TasksPage() {
   const [users, setUsers] = useState<UserOption[]>([]);
   const [pendingRequests, setPendingRequests] = useState<Task[]>([]);
   const [orgReviewRequests, setOrgReviewRequests] = useState<Task[]>([]);
-  const [leaguePlans, setLeaguePlans] = useState<TimelinePlanRow[]>([]);
-  const [leagueSchedule, setLeagueSchedule] = useState<ScheduleEntryRow[]>([]);
   const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
   const [orgRejectReason, setOrgRejectReason] = useState<Record<string, string>>({});
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
@@ -247,21 +233,11 @@ export default function TasksPage() {
       setUsers(Array.isArray(userList) ? userList : []);
 
       if (m.role === 'LEAGUE_ADMIN') {
-        const [reqRes, plansRes, scheduleRes] = await Promise.allSettled([
+        const [reqRes] = await Promise.allSettled([
           apiFetch<Task[]>('/tasks/admin/requests', { token }),
-          apiFetch<TimelinePlanRow[]>('/plans/timeline', { token }),
-          apiFetch<{ entries?: ScheduleEntryRow[] }>('/schedule', { token }),
         ]);
         setPendingRequests(
           reqRes.status === 'fulfilled' && Array.isArray(reqRes.value) ? reqRes.value : [],
-        );
-        setLeaguePlans(
-          plansRes.status === 'fulfilled' && Array.isArray(plansRes.value) ? plansRes.value : [],
-        );
-        setLeagueSchedule(
-          scheduleRes.status === 'fulfilled' && Array.isArray(scheduleRes.value?.entries)
-            ? scheduleRes.value.entries
-            : [],
         );
         setOrgReviewRequests([]);
       } else if (m.role === 'ORG_ADMIN' || (m.managedOrgIds ?? []).length > 0) {
@@ -272,13 +248,9 @@ export default function TasksPage() {
         setOrgReviewRequests(Array.isArray(orgReq) ? orgReq : []);
         setTaskLogs(Array.isArray(logs) ? logs : []);
         setPendingRequests([]);
-        setLeaguePlans([]);
-        setLeagueSchedule([]);
       } else {
         setPendingRequests([]);
         setOrgReviewRequests([]);
-        setLeaguePlans([]);
-        setLeagueSchedule([]);
         setTaskLogs([]);
       }
     } catch (e) {
@@ -289,8 +261,6 @@ export default function TasksPage() {
       setUsers([]);
       setPendingRequests([]);
       setOrgReviewRequests([]);
-      setLeaguePlans([]);
-      setLeagueSchedule([]);
       setTaskLogs([]);
     }
   }, [token, tc]);
@@ -309,7 +279,7 @@ export default function TasksPage() {
 
   async function setStatus(id: string, status: string) {
     if (!token) return;
-    if (!confirmAction(`确认将任务状态更新为 ${status} 吗？`)) return;
+    if (!confirmAction(`确认将任务状态更新为 ${localizedTaskStatus(status)} 吗？`)) return;
 
     try {
       await apiFetch(`/tasks/${id}/status`, {
@@ -325,7 +295,15 @@ export default function TasksPage() {
 
   async function deleteTask(id: string) {
     if (!token) return;
-    if (!confirmAction('确认删除该活动/任务吗？此操作不可恢复。')) return;
+    if (
+      !confirmAction(
+        isOrgAdmin
+          ? '确认提交删除申请吗？提交后需团委审核，通过后才会真正删除。'
+          : '确认删除该活动/任务吗？此操作不可恢复。',
+      )
+    ) {
+      return;
+    }
 
     try {
       await apiFetch(`/tasks/${id}`, {
@@ -338,18 +316,29 @@ export default function TasksPage() {
     }
   }
 
-  async function reviewRequest(taskId: string, payload: RequestReviewPayload) {
+  async function reviewRequest(task: Task, payload: RequestReviewPayload) {
     if (!token) return;
-    if (!confirmAction(payload.approve ? '确认通过该活动申请吗？' : '确认驳回该活动申请吗？')) {
+    const deleting = isDeleteRequest(task);
+    if (
+      !confirmAction(
+        payload.approve
+          ? deleting
+            ? '确认通过该删除申请吗？通过后活动将被删除。'
+            : '确认通过该活动申请吗？'
+          : deleting
+            ? '确认驳回该删除申请吗？'
+            : '确认驳回该活动申请吗？',
+      )
+    ) {
       return;
     }
     try {
-      await apiFetch(`/tasks/admin/requests/${taskId}/review`, {
+      await apiFetch(`/tasks/admin/requests/${task.id}/review`, {
         method: 'PATCH',
         token,
         body: JSON.stringify(payload),
       });
-      setRejectReason((s) => ({ ...s, [taskId]: '' }));
+      setRejectReason((s) => ({ ...s, [task.id]: '' }));
       await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : tc('error'));
@@ -612,28 +601,6 @@ export default function TasksPage() {
       ),
     [orgScopedTasks],
   );
-  const leagueMergedArrangements = useMemo(() => {
-    if (!isLeagueAdmin) return [] as Array<{ id: string; title: string; time: string; kind: string }>;
-    const taskRows = tasks.map((task) => ({
-      id: `task-${task.id}`,
-      title: triField(task, 'title', locale) || '—',
-      time: `开始：${formatDateTime(task.startAt)} · 结束：${formatDateTime(task.endAt ?? task.dueAt)}`,
-      kind: '活动任务',
-    }));
-    const planRows = leaguePlans.map((row) => ({
-      id: `plan-${row.id}`,
-      title: triField(row, 'title', locale) || '—',
-      time: `截止：${formatDateTime(row.dueAt)}`,
-      kind: '校级日程',
-    }));
-    const scheduleRows = leagueSchedule.map((row) => ({
-      id: `schedule-${row.id}`,
-      title: triField(row, 'course', locale) || '—',
-      time: `周${String(row.weekday ?? '—')} · ${String(row.startTime ?? '--:--')} - ${String(row.endTime ?? '--:--')}`,
-      kind: '校级课务安排',
-    }));
-    return [...taskRows, ...planRows, ...scheduleRows].slice(0, 12);
-  }, [isLeagueAdmin, leaguePlans, leagueSchedule, locale, tasks]);
 
   if (!ready || !token) {
     return (
@@ -664,6 +631,7 @@ export default function TasksPage() {
                 mutableByOrgAdmin &&
                 (task.approvalStatus === 'PENDING_APPROVAL' || task.approvalStatus === 'REJECTED');
               const canDelete = isLeagueAdmin || (isOrgAdmin ? mutableByOrgAdmin : false);
+              const deleteButtonText = isOrgAdmin ? '申请删除' : '删除';
 
               return (
                 <li key={task.id} className="list-item">
@@ -686,7 +654,7 @@ export default function TasksPage() {
                         }}
                       >
                         <strong>{triField(task, 'title', locale)}</strong>
-                        <span className={statusBadgeClass(task.status)}>{task.status}</span>
+                        <span className={statusBadgeClass(task.status)}>{localizedTaskStatus(task.status)}</span>
                         <span className={approvalBadgeClass(task.approvalStatus)}>
                           {approvalLabel(task.approvalStatus)}
                         </span>
@@ -732,7 +700,7 @@ export default function TasksPage() {
                         >
                           {['TODO', 'IN_PROGRESS', 'DONE', 'BLOCKED'].map((s) => (
                             <option key={s} value={s}>
-                              {s}
+                              {localizedTaskStatus(s)}
                             </option>
                           ))}
                         </select>
@@ -744,7 +712,7 @@ export default function TasksPage() {
                           onClick={() => deleteTask(task.id)}
                           className="logout-btn"
                         >
-                          删除
+                          {deleteButtonText}
                         </button>
                       ) : (
                         <button type="button" disabled title="当前权限不可删除">
@@ -890,31 +858,7 @@ export default function TasksPage() {
           </div>
         </div>
 
-        {isLeagueAdmin ? (
-          <div className="page-section">
-            <div className="card-soft" style={{ display: 'grid', gap: 10 }}>
-              <h3 style={{ marginBottom: 4 }}>活动安排与任务中心（已合并）</h3>
-              <p className="topbar-muted" style={{ marginTop: 0 }}>
-                已将团委任务与校级日程合并展示，统一在本板块进行发布、修改与排期查看。
-              </p>
-              {leagueMergedArrangements.length === 0 ? (
-                <div className="topbar-muted">暂无可展示安排</div>
-              ) : (
-                <ul className="list-clean">
-                  {leagueMergedArrangements.map((row) => (
-                    <li key={row.id} className="list-item">
-                      <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                        <strong>{row.title}</strong>
-                        <span className="badge badge-blue">{row.kind}</span>
-                      </div>
-                      <div className="topbar-muted" style={{ marginTop: 6 }}>{row.time}</div>
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </div>
-          </div>
-        ) : null}
+        {isOrgAdmin ? renderOrgKanban() : null}
 
         {canCreate && (
           <div className="page-section">
@@ -1110,14 +1054,19 @@ export default function TasksPage() {
                 <div className="topbar-muted">暂无待审核申请</div>
               ) : (
                 <ul className="list-clean">
-                  {pendingRequests.map((row) => (
+                  {pendingRequests.map((row) => {
+                    const deleting = isDeleteRequest(row);
+                    return (
                     <li key={row.id} className="list-item">
                       <div style={{ display: 'grid', gap: 8 }}>
                         <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
                           <strong>{triField(row, 'title', locale)}</strong>
-                          <span className={approvalBadgeClass(row.approvalStatus)}>
-                            {approvalLabel(row.approvalStatus)}
-                          </span>
+                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                            {deleting ? <span className="badge badge-red">删除申请</span> : null}
+                            <span className={approvalBadgeClass(row.approvalStatus)}>
+                              {approvalLabel(row.approvalStatus)}
+                            </span>
+                          </div>
                         </div>
                         <div className="topbar-muted">
                           申请组织：
@@ -1126,30 +1075,31 @@ export default function TasksPage() {
                         </div>
                         <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
                           <input
-                            placeholder="驳回原因（可选）"
+                            placeholder={deleting ? '驳回删除原因（可选）' : '驳回原因（可选）'}
                             value={rejectReason[row.id] ?? ''}
                             onChange={(e) => setRejectReason((s) => ({ ...s, [row.id]: e.target.value }))}
                             style={{ flex: 1, minWidth: 260 }}
                           />
-                          <button type="button" onClick={() => reviewRequest(row.id, { approve: true })}>
-                            通过
+                          <button type="button" onClick={() => reviewRequest(row, { approve: true })}>
+                            {deleting ? '通过删除' : '通过'}
                           </button>
                           <button
                             type="button"
                             className="logout-btn"
                             onClick={() =>
-                              reviewRequest(row.id, {
+                              reviewRequest(row, {
                                 approve: false,
                                 reason: rejectReason[row.id] || undefined,
                               })
                             }
                           >
-                            驳回
+                            {deleting ? '驳回删除' : '驳回'}
                           </button>
                         </div>
                       </div>
                     </li>
-                  ))}
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -1210,10 +1160,7 @@ export default function TasksPage() {
         )}
 
         {isOrgAdmin ? (
-          <>
-            {renderOrgKanban()}
-            {renderTaskList('正在审核', orgReviewingTasks, '暂无审核中的活动申请')}
-          </>
+          renderTaskList('正在审核', orgReviewingTasks, '暂无审核中的活动申请')
         ) : (
           renderTaskList('活动与任务列表', tasks, '暂无任务')
         )}

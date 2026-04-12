@@ -4,6 +4,8 @@ ADD COLUMN "adminUserId" TEXT,
 ADD COLUMN "adminAccount" TEXT,
 ADD COLUMN "adminPassword" TEXT NOT NULL DEFAULT '';
 
+ALTER TABLE "Organization" ALTER COLUMN "adminPassword" DROP NOT NULL;
+
 CREATE UNIQUE INDEX "Organization_adminAccount_key" ON "Organization"("adminAccount");
 
 ALTER TABLE "Organization"

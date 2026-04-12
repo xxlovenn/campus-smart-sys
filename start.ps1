@@ -21,7 +21,8 @@ function Assert-DockerReady {
 function Wait-ServiceHealthy([string]$service, [int]$timeoutSec) {
   $deadline = (Get-Date).AddSeconds($timeoutSec)
   while ((Get-Date) -lt $deadline) {
-    $containerId = (docker compose ps -q $service).Trim()
+    $rawId = docker compose ps -q $service 2>$null
+    $containerId = if ([string]::IsNullOrWhiteSpace($rawId)) { "" } else { $rawId.Trim() }
     if (-not $containerId) {
       Start-Sleep -Seconds 2
       continue
@@ -46,6 +47,9 @@ Assert-DockerReady
 
 Write-Host "[step] Building and starting containers..."
 docker compose up -d --build
+if ($LASTEXITCODE -ne 0) {
+  throw "docker compose up failed (exit $LASTEXITCODE). Check Docker Hub/network or registry mirror settings."
+}
 
 Write-Host "[step] Waiting for backend/frontend health checks..."
 Wait-ServiceHealthy -service "backend" -timeoutSec $TimeoutSeconds

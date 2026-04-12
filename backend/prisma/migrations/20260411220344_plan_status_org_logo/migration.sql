@@ -7,24 +7,11 @@ CREATE TYPE "ActivityLogType" AS ENUM ('ORGANIZATION', 'TASK');
 -- CreateEnum
 CREATE TYPE "PlanStatus" AS ENUM ('TODO', 'DONE');
 
--- DropIndex
-DROP INDEX "AwardChangeRequest_userId_status_idx";
-
--- DropIndex
-DROP INDEX "GradeMajorChangeRequest_userId_status_idx";
-
--- DropIndex
-DROP INDEX "Profile_reviewStatus_submittedAt_idx";
-
--- DropIndex
-DROP INDEX "TagChangeRequest_userId_status_idx";
-
 -- AlterTable
 ALTER TABLE "Organization" ADD COLUMN     "logoUrl" TEXT DEFAULT '',
 ADD COLUMN     "status" "OrganizationStatus" NOT NULL DEFAULT 'ACTIVE',
 ADD COLUMN     "statusChangedAt" TIMESTAMP(3),
-ADD COLUMN     "statusChangedById" TEXT,
-ALTER COLUMN "adminPassword" DROP NOT NULL;
+ADD COLUMN     "statusChangedById" TEXT;
 
 -- AlterTable
 ALTER TABLE "PersonalPlan" ADD COLUMN     "noteEn" TEXT NOT NULL DEFAULT '',

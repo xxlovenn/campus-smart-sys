@@ -1,5 +1,7 @@
 FROM node:20
 WORKDIR /app
+ENV NPM_CONFIG_REGISTRY=https://registry.npmmirror.com
+ENV PRISMA_ENGINES_MIRROR=https://cdn.npmmirror.com/binaries/prisma
 COPY package.json ./
 RUN npm install
 COPY . .

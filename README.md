@@ -1,144 +1,226 @@
-# 校园综合智慧管理系统 / Campus Smart Sys
+# 🎓 校园综合智慧管理系统（Campus Smart System）
 
-比赛交付物：前后端源码 + `docker-compose.yml` + `Dockerfile(s)` + `.env.example` + 部署文档。
+面向高校学生与团委管理场景，构建集 **时间管理、任务协同、学生档案中心** 于一体的综合平台，支持三端协同与三语言切换。
 
-## 赛事提交对照清单
+---
 
-### 必交文件（已覆盖）
+## 📌 项目简介
 
-- `docker-compose.yml`：一键部署核心编排
-- `Dockerfile(s)`：`backend/Dockerfile`、`frontend/Dockerfile`
-- `.env.example`：环境变量模板（可直接复制）
-- `README.md`：完整部署与答辩指引
-- 完整项目源码：`backend/` + `frontend/`
+本系统围绕高校真实业务需求，重点解决：
 
-### 可选增强项（建议）
+- 学生课表、任务、计划信息分散问题  
+- 校园任务、组织任务与个人安排缺乏统一视图的问题  
+- 学生档案信息不规范、难以用于评优评先的问题  
 
-- `init-data/`：数据库初始化扩展脚本（当前已提供）
-- API 文档：可在答辩时补充接口说明或演示录屏
+通过构建：
 
-## 功能概览
+- ✅ **时间与任务中心（统一时间轴）**
+- ✅ **组织 OA 与任务流转系统**
+- ✅ **学生个人档案中心（审核备案）**
 
-- **学生时间与任务管理**：个人计划、时间轴视图、课表（含模拟学校 API 合并）、即将到期汇总。
-- **组织 OA 与任务流转**：跨组织关联、状态更新、团委全局任务看板（JSON 概览）。
-- **学生个人档案中心**：三语基础信息、GitHub、荣誉、能力标签、团委审核（通过/驳回）。
-- **三语界面**：中文 / English / Русский（`next-intl` + 导航切换；业务数据字段三语存储）。
+实现学生个人时间与校园事务的一体化管理。
 
-## 前置条件
+---
 
-- Docker / Docker Compose v2
-- 可选：Node.js 20+（本地开发）
+## 🏆 赛事要求对应关系
 
-## 一键部署（评审标准流程）
+### （一）学生时间与任务管理模块
 
-在项目根目录：
+- 统一时间轴视图（课程 / 任务 / 计划 / 校园事项）
+- 多维度时间信息整合展示
+- 个人计划与任务自主管理
+- 校园统筹事项与组织任务同步
+- 即将到期事项提醒
+- 模拟课表 API 接入
+
+---
+
+### （二）组织 OA 与任务流转系统
+
+- 组织任务创建、分配与流转
+- 团委全局任务看板
+- 多组织协同管理
+- 任务状态统一管理
+
+---
+
+### （三）学生个人档案中心
+
+- 基础信息与身份信息管理
+- 能力标签与奖项荣誉管理
+- 档案审核、驳回与备案
+- 支撑评优评先与学生骨干选拔
+
+---
+
+## 📸 页面预览
+
+> 请将截图放入：`docs/screenshots/`
+
+### 🏠 学生端：首页
+![dashboard](./docs/screenshots/dashboard.png)
+
+---
+
+### 🕒 时间与任务中心（核心亮点🔥）
+![timeline](./docs/screenshots/timeline.png)
+
+👉 统一整合：
+- 课表
+- 个人任务
+- 个人计划
+- 校园统筹事项
+
+---
+
+### 📁 学生档案中心
+![profile](./docs/screenshots/profile.png)
+
+👉 展示：
+- 档案完整度
+- 审核状态
+- 标签 / 奖项
+
+---
+
+### 🏛 团委端：档案审核中心
+![admin](./docs/screenshots/admin.png)
+
+👉 展示：
+- 审核流程
+- 驳回机制
+- 审核记录
+
+---
+
+## 🎬 系统演示流程（答辩用）
+
+### Step 1：学生登录
+账号：`student@campus.demo`
+
+展示：
+- Dashboard
+- 今日任务 / 今日课程
+
+---
+
+### Step 2：时间与任务中心
+重点讲：
+
+> 所有时间数据统一到时间轴（课表 + 任务 + 计划）
+
+---
+
+### Step 3：创建任务
+- 新建任务
+- 标记完成
+👉 自动同步时间轴
+
+---
+
+### Step 4：学生档案中心
+展示：
+- 审核状态
+- 标签 / 奖项
+
+说明：
+
+> 用于评优评先的数据沉淀
+
+---
+
+### Step 5：切换团委账号
+账号：`league@campus.demo`
+
+进入审核中心
+
+---
+
+### Step 6：执行审核
+- 通过 / 驳回
+- 填写原因
+
+---
+
+### Step 7：返回学生端
+展示：
+- 审核结果变化
+
+---
+
+### Step 8：三语言切换
+- 中文 / English / Русский
+
+---
+
+## 🌐 三语言支持
+
+系统支持：
+
+- 中文（zh）
+- English（en）
+- Русский（ru）
+
+覆盖：
+- 页面内容
+- 按钮
+- 状态
+- 提示信息
+
+---
+
+## 🧠 模拟 API 与样本数据
+
+由于学校未提供真实接口，本系统采用：
+
+> ✅ 模拟 API + 样本数据
+
+包括：
+
+- 课表数据
+- 时间轴数据
+- 任务数据
+- 档案数据
+
+目标：
+
+- 数据互通
+- 可接入真实 API
+- 避免数据孤岛
+
+---
+
+## ⚙️ 技术栈
+
+### 前端
+- Next.js 14
+- TypeScript
+- next-intl
+
+### 后端
+- NestJS
+- Prisma
+- PostgreSQL
+
+### 部署
+- Docker Compose
+
+---
+
+## 📦 部署说明（赛事要求）
+
+### 1️⃣ 前置条件
+
+- Docker ≥ 20.x
+- Docker Compose ≥ v2
+- 网络正常
+
+---
+
+### 2️⃣ 启动步骤
 
 ```bash
-git clone <你的 GitHub 仓库地址>
-cd Campus_Smart_Sys
-cp .env.example .env
+git clone https://github.com/xxlovenn/campus-smart-sys.git
+cd campus-smart-sys
 docker compose up -d --build
-```
-
-> 按赛事标准流程，执行以上 4 条命令即可完成部署。  
-> 若仅用于现场评审，可不修改 `.env` 直接启动；若长期运行，建议再修改 `POSTGRES_PASSWORD` 与 `JWT_SECRET`。
-
-访问：
-
-- 前端：<http://localhost:3000>（自动进入默认语言路由，例如 `/zh`）
-- 后端 API（可直连调试）：<http://localhost:3001/api>
-
-> 前端统一使用相对路径 `/api`，并通过 Next.js rewrites 转发到 `backend:3001/api`。
-> 比赛部署时无需配置或修改前端 API 环境变量，也不需要重新构建前端来切换后端地址。
-
-## Backend 启动与初始化（推荐）
-
-- 正常容器启动（评审推荐）：
-
-```bash
-docker compose up -d --build
-```
-
-> backend 容器启动流程为：`prisma migrate deploy` + `prisma seed` + `node dist/main.js`（通过 `npm run start:container`）。  
-> 也就是说，按评审标准流程启动后会自动具备演示账号与演示数据，无需额外执行初始化命令。
-
-- 如需手动重置演示数据（不会重启服务）：
-
-```bash
-docker compose exec backend npm run db:reseed
-```
-
-## 默认演示账号（种子数据）
-
-密码均为 **`demo123456`**：
-
-| 角色     | 邮箱                 | 说明        |
-|----------|----------------------|-------------|
-| 学生     | `student@campus.demo` | 课表/计划/任务/档案 |
-| 社团负责人 | `org@campus.demo`     | 可创建组织任务     |
-| 团委管理员 | `league@campus.demo`  | 组织管理、全局任务、档案审核 |
-
-## 评审快速验收（建议照此顺序）
-
-1. 执行 `docker compose up -d --build`，确认容器全部 `healthy`。
-2. 打开前端 `http://localhost:3000/zh`，确认页面可访问。
-3. 使用默认账号登录，确认可进入系统并加载业务数据。
-4. 演示“时间轴/任务/档案审核/多语言切换”四个核心场景。
-
-## 演示指引（答辩建议路径）
-
-1. 使用学生账号登录 → **时间轴与课表**：查看课表合并与「同步模拟课表 API」。
-2. **组织任务**：演示跨组织任务、状态流转；换团委账号查看 **/tasks** 底部全局 JSON 概览。
-3. **个人档案**：编辑三语身份信息、添加荣誉/标签 → 换团委账号在 **团委后台** 审核通过/驳回。
-4. 切换 **ZH / EN / RU** 导航语言，确认界面词条与数据三语字段展示。
-
-## 目录结构
-
-```text
-项目根目录/
-├── docker-compose.yml
-├── .env.example
-├── README.md
-├── init-data/              # 可选：Postgres 初始化（扩展等）
-├── backend/                # NestJS + Prisma + PostgreSQL
-└── frontend/               # Next.js 14 (App Router) + next-intl
-```
-
-## 常见问题
-
-- **端口占用**：修改 `docker-compose.yml` 中 `3000` / `3001` / `5432` 映射。
-- **JWT / 数据库连接失败**：确认根目录 `.env` 与容器内 `DATABASE_URL` 一致；重新 `docker compose up -d --build`。
-- **前后端通信配置**：前端固定请求 `/api`；如需变更容器内后端地址，只需改 `.env` 中 `BACKEND_INTERNAL_ORIGIN` 并重启前端容器。
-- **Windows 防火墙**：优先访问前端 `localhost:3000`，前端会同源转发 `/api` 到后端；若直接调试后端端口，再放行 `3001`。
-
-## 将代码推送到你的 GitHub（新建公开库）
-
-1. 在 GitHub 上创建 **Public** 仓库（例如 `campus-smart-sys`）。
-2. 本地在项目根目录执行：
-
-```bash
-git init
-git add .
-git commit -m "feat: initial campus smart system for competition"
-git branch -M main
-git remote add origin https://github.com/<你的用户名>/<仓库名>.git
-git push -u origin main
-```
-
-## 提交前自检（建议）
-
-- 仓库可被评委访问（`public` 或已授予评委账号权限）
-- `README.md` 中命令可直接复现，无额外隐含步骤
-- `docker compose up -d --build` 可一次成功
-- 默认演示账号可登录并完成核心功能演示
-- 截止时间前最后一次 `commit` 为评审版本
-
-## 技术栈
-
-- 后端：NestJS 10、Prisma、PostgreSQL、JWT
-- 前端：Next.js 14、React 18、next-intl
-- 部署：Docker Compose 编排 `postgres` + `backend` + `frontend`
-
-## 许可
-
-比赛作品代码仅供赛事评审与学习使用；引用赛事与 Cursor 社区支持说明请遵循组委会官方声明。
+docker compose exec backend npm run db:init

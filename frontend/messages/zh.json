@@ -712,5 +712,29 @@
       "addMajor": "确认新增该专业吗？"
     }
   },
-  "notifications": { "title": "通知中心", "markAll": "全部已读" }
+  "notifications": {
+    "title": "通知中心",
+    "subtitle": "未读 {unread} 条 / 共 {total} 条",
+    "markAll": "全部已读",
+    "empty": "暂无通知",
+    "publishedAt": "通知时间",
+    "publisher": "发布单位",
+    "publisherFallback": "系统通知",
+    "types": {
+      "leaguePublish": "团委发布",
+      "orgPublish": "社团发布",
+      "reviewResult": "审核结果"
+    },
+    "status": {
+      "unread": "未读",
+      "read": "已读"
+    },
+    "actions": {
+      "markRead": "标记已读"
+    },
+    "confirm": {
+      "markOne": "确认将该通知标记为已读吗？",
+      "markAll": "确认将全部通知标记为已读吗？"
+    }
+  }
 }

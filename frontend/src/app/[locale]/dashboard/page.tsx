@@ -50,6 +50,7 @@ type DashboardTaskRow = {
   createdAt?: string | null;
   source?: string;
   primaryOrgId?: string | null;
+  primaryOrg?: Record<string, unknown> | null;
   relatedOrgs?: Array<{ organizationId?: string }>;
 };
 type ScheduleEntry = {
@@ -1070,6 +1071,124 @@ export default function DashboardPage() {
       return ts >= now - 2 * 60 * 60 * 1000 && ts <= horizon;
     });
   }, [isLeagueAdmin, leagueActivityTimelineItems]);
+  const leagueRecentApprovedActivities = useMemo(() => {
+    if (!isLeagueAdmin) return [] as Array<{
+      id: string;
+      title: string;
+      orgName: string;
+      startAt: string | null;
+      endAt: string | null;
+      status?: string;
+    }>;
+    return tasks
+      .filter((row) => row.approvalStatus === 'APPROVED')
+      .map((row) => ({
+        id: row.id,
+        title: triField(row as unknown as Record<string, unknown>, 'title', locale) || t('quickEntry'),
+        orgName: triField((row.primaryOrg as Record<string, unknown>) ?? {}, 'name', locale) || '未标注组织',
+        startAt: row.startAt ?? null,
+        endAt: row.endAt ?? row.dueAt ?? null,
+        status: row.status,
+      }))
+      .sort((a, b) => {
+        const ta = parseDateValue(a.startAt ?? a.endAt)?.getTime() ?? 0;
+        const tb = parseDateValue(b.startAt ?? b.endAt)?.getTime() ?? 0;
+        return tb - ta;
+      })
+      .slice(0, 6);
+  }, [isLeagueAdmin, locale, t, tasks]);
+  const leagueGanttDays = useMemo(() => {
+    if (!isLeagueAdmin) {
+      return [] as Array<{
+        key: string;
+        label: string;
+        weekday: string;
+        items: Array<{
+          id: string;
+          title: string;
+          orgName: string;
+          status?: string;
+          startAt: string | null;
+          endAt: string | null;
+          leftPct: number;
+          widthPct: number;
+          lane: number;
+          overlapRisk: boolean;
+        }>;
+      }>;
+    }
+    const startHour = 6;
+    const totalMinutes = 17 * 60;
+    const base = new Date();
+    base.setHours(0, 0, 0, 0);
+    const weekdayFmt = new Intl.DateTimeFormat(locale, { weekday: 'short' });
+    const dayMap = new Map(
+      Array.from({ length: 7 }).map((_, idx) => {
+        const day = addDays(base, idx);
+        return [
+          dateKey(day),
+          {
+            key: dateKey(day),
+            label: day.toLocaleDateString(locale, { month: '2-digit', day: '2-digit' }),
+            weekday: weekdayFmt.format(day),
+            items: [] as Array<{
+              id: string;
+              title: string;
+              orgName: string;
+              status?: string;
+              startAt: string | null;
+              endAt: string | null;
+              leftPct: number;
+              widthPct: number;
+              lane: number;
+              overlapRisk: boolean;
+            }>,
+          },
+        ];
+      }),
+    );
+    for (const row of leagueUpcomingActivityItems) {
+      const start = parseDateValue(row.startAt ?? row.endAt);
+      const end = parseDateValue(row.endAt ?? row.startAt);
+      if (!start || !end) continue;
+      const day = dayMap.get(dateKey(start));
+      if (!day) continue;
+      const taskId = row.id.replace('league-activity-', '');
+      const task = tasks.find((item) => item.id === taskId);
+      const startMinutes = start.getHours() * 60 + start.getMinutes();
+      const endMinutes = end.getHours() * 60 + end.getMinutes();
+      day.items.push({
+        id: row.id,
+        title: row.title,
+        orgName: task
+          ? triField((task.primaryOrg as Record<string, unknown>) ?? {}, 'name', locale) || '未标注组织'
+          : '未标注组织',
+        status: row.status,
+        startAt: row.startAt ?? null,
+        endAt: row.endAt ?? null,
+        leftPct: clampNumber(((startMinutes - startHour * 60) / totalMinutes) * 100, 0, 100),
+        widthPct: clampNumber((Math.max(endMinutes - startMinutes, 45) / totalMinutes) * 100, 8, 100),
+        lane: 0,
+        overlapRisk: false,
+      });
+    }
+    return Array.from(dayMap.values()).map((day) => {
+      const sorted = [...day.items].sort((a, b) => {
+        const ta = parseDateValue(a.startAt ?? a.endAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const tb = parseDateValue(b.startAt ?? b.endAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        return ta - tb;
+      });
+      let latestEnd = -1;
+      const withMeta = sorted.map((row, index) => {
+        const startTs = parseDateValue(row.startAt ?? row.endAt)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+        const endTs = parseDateValue(row.endAt ?? row.startAt)?.getTime() ?? startTs;
+        const overlapRisk = latestEnd > 0 && startTs < latestEnd;
+        latestEnd = Math.max(latestEnd, endTs);
+        return { ...row, lane: index, overlapRisk };
+      });
+      return { ...day, items: withMeta };
+    });
+  }, [isLeagueAdmin, leagueUpcomingActivityItems, locale, tasks]);
   const leaguePendingReviewHeadline = useMemo(() => {
     if (!isLeagueAdmin) return null;
     const pending = tasks.filter((row) => row.approvalStatus === 'PENDING_APPROVAL');
@@ -1240,27 +1359,6 @@ export default function DashboardPage() {
     );
   };
   const timelineMarks = ['06:00', '09:00', '12:00', '15:00', '18:00', '21:00', '23:00'];
-  const activityStripRows = (rows: TimelineVizItem[]) => {
-    if (rows.length === 0) return [];
-    const now = new Date();
-    const dayStart = toDayBoundary(now, 6, 0);
-    const dayEnd = toDayBoundary(new Date(now.getTime() + 14 * 24 * 60 * 60 * 1000), 23, 0);
-    const totalMinutes = Math.max(1, (dayEnd.getTime() - dayStart.getTime()) / (60 * 1000));
-    return rows.map((row) => {
-      const parsedStart = parseDateValue(row.startAt ?? row.endAt);
-      const parsedEnd = parseDateValue(row.endAt ?? row.startAt);
-      const start = parsedStart ?? parsedEnd ?? dayStart;
-      const end = parsedEnd ?? parsedStart ?? start;
-      const leftPct = ((clampNumber(start.getTime(), dayStart.getTime(), dayEnd.getTime()) - dayStart.getTime()) / 60_000 / totalMinutes) * 100;
-      const widthPct = (Math.max(end.getTime() - start.getTime(), 2 * 60 * 60 * 1000) / 60_000 / totalMinutes) * 100;
-      return {
-        ...row,
-        leftPct: clampNumber(leftPct, 0, 100),
-        widthPct: clampNumber(widthPct, 4, 100),
-      };
-    });
-  };
-
   if (!ready || !token) {
     return (
       <div className="page-card page-section dashboard-state">
@@ -1401,8 +1499,8 @@ export default function DashboardPage() {
 
             <div className="dashboard-league-grid">
               <div className="dashboard-league-card">
-                <h3 className="dashboard-viz-title">活动时间可视化（简版）</h3>
-                <p className="topbar-muted dashboard-viz-subtitle">未来 14 天全局活动安排时间带（无课表）</p>
+                <h3 className="dashboard-viz-title">活动排期总览</h3>
+                <p className="topbar-muted dashboard-viz-subtitle">未来 14 天活动排期，按开始时间排序并标记时间冲突风险</p>
                 {leaguePendingReviewHeadline ? (
                   <div className="dashboard-viz-alert">
                     待审核活动 {leaguePendingReviewHeadline.total} 条，最近截止：
@@ -1412,21 +1510,90 @@ export default function DashboardPage() {
                     </span>
                   </div>
                 ) : null}
-                {leagueUpcomingActivityItems.length === 0 ? (
-                  <p className="topbar-muted">未来 14 天暂无可展示的活动安排</p>
+                {leagueGanttDays.every((day) => day.items.length === 0) ? (
+                  <div style={{ display: 'grid', gap: 8 }}>
+                    <p className="topbar-muted" style={{ marginBottom: 0 }}>
+                      未来 14 天暂无可展示的活动安排，已切换展示最近历史活动：
+                    </p>
+                    <div className="timeline-table-wrap">
+                      <table className="timeline-table">
+                        <thead>
+                          <tr>
+                            <th>活动</th>
+                            <th>组织</th>
+                            <th>开始</th>
+                            <th>结束</th>
+                            <th>状态</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {leagueRecentApprovedActivities.length === 0 ? (
+                            <tr>
+                              <td colSpan={5} className="topbar-muted">暂无历史活动数据</td>
+                            </tr>
+                          ) : (
+                            leagueRecentApprovedActivities.map((row) => (
+                              <tr key={row.id}>
+                                <td>{row.title}</td>
+                                <td>{row.orgName}</td>
+                                <td>{formatDateTimeShort(row.startAt)}</td>
+                                <td>{formatDateTimeShort(row.endAt)}</td>
+                                <td><span className={taskStatusBadgeClass(row.status)}>{taskStatusLabel(row.status)}</span></td>
+                              </tr>
+                            ))
+                          )}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
                 ) : (
-                  <div className="dashboard-activity-strip">
-                    <div className="dashboard-activity-strip-track" />
-                    {activityStripRows(leagueUpcomingActivityItems.slice(0, 6)).map((row) => (
-                      <div key={row.id} className="dashboard-activity-strip-row">
-                        <div className="dashboard-activity-strip-meta">
-                          <strong>{row.title}</strong>
-                          <span className="topbar-muted">{formatDateTimeShort(row.startAt)}</span>
+                  <div className="dashboard-gantt">
+                    <div className="dashboard-gantt-head">
+                      <div className="dashboard-gantt-day-col">日期</div>
+                      <div className="dashboard-gantt-axis">
+                        {['06:00', '09:00', '12:00', '15:00', '18:00', '21:00', '23:00'].map((mark) => (
+                          <span key={mark}>{mark}</span>
+                        ))}
+                      </div>
+                    </div>
+                    {leagueGanttDays.map((day) => (
+                      <div key={day.key} className="dashboard-gantt-row">
+                        <div className="dashboard-gantt-day-col">
+                          <strong>{day.label}</strong>
+                          <span className="topbar-muted">{day.weekday}</span>
                         </div>
                         <div
-                          className="dashboard-activity-strip-fill dashboard-activity-strip-fill-league"
-                          style={{ left: `${row.leftPct}%`, width: `${row.widthPct}%` }}
-                        />
+                          className="dashboard-gantt-track"
+                          style={{ minHeight: Math.max(44, day.items.length * 30 + 8) }}
+                        >
+                          <div className="dashboard-gantt-grid">
+                            {['06', '09', '12', '15', '18', '21', '23'].map((mark) => (
+                              <span key={`${day.key}-${mark}`} />
+                            ))}
+                          </div>
+                          {day.items.length === 0 ? (
+                            <div className="dashboard-gantt-empty">—</div>
+                          ) : (
+                            day.items.map((item) => (
+                              <div
+                                key={item.id}
+                                className={`dashboard-gantt-bar ${item.overlapRisk ? 'dashboard-gantt-bar-overlap' : ''}`}
+                                style={{
+                                  left: `${item.leftPct}%`,
+                                  width: `${item.widthPct}%`,
+                                  top: `${item.lane * 30 + 6}px`,
+                                }}
+                                title={`${item.title}｜${item.orgName}｜${formatDateTimeShort(item.startAt)}-${formatDateTimeShort(item.endAt)}`}
+                              >
+                                <span className="dashboard-gantt-bar-title">{item.title}</span>
+                                <span className="dashboard-gantt-bar-meta">
+                                  {formatHourMinuteLabel(item.startAt)}-{formatHourMinuteLabel(item.endAt)}
+                                </span>
+                                <span className={taskStatusBadgeClass(item.status)}>{taskStatusLabel(item.status)}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
                       </div>
                     ))}
                   </div>

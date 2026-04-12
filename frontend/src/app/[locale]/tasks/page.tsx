@@ -69,10 +69,6 @@ type UserOption = {
   className?: string | null;
 };
 
-type RequestReviewPayload = {
-  approve: boolean;
-  reason?: string;
-};
 type OrgReviewPayload = { approve: boolean; reason?: string };
 type TaskChangeLog = {
   id: string;
@@ -83,7 +79,6 @@ type TaskChangeLog = {
   createdAt?: string;
   actor?: { name?: string; email?: string } | null;
 };
-const DELETE_REQUEST_PREFIX = 'DELETE_REQUEST::';
 
 function toLocalDateTimeValue(date: Date) {
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -134,10 +129,6 @@ function approvalLabel(approval?: string) {
   return '待审核';
 }
 
-function isDeleteRequest(task: Task) {
-  return typeof task.reviewNote === 'string' && task.reviewNote.startsWith(DELETE_REQUEST_PREFIX);
-}
-
 function sourceLabel(task: Task, locale: string, isOrgAdmin: boolean) {
   if (task.source === 'LEAGUE_PUBLISHED') return '团委发布';
   if (isOrgAdmin) return '本社团';
@@ -171,9 +162,7 @@ export default function TasksPage() {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [orgs, setOrgs] = useState<Organization[]>([]);
   const [users, setUsers] = useState<UserOption[]>([]);
-  const [pendingRequests, setPendingRequests] = useState<Task[]>([]);
   const [orgReviewRequests, setOrgReviewRequests] = useState<Task[]>([]);
-  const [rejectReason, setRejectReason] = useState<Record<string, string>>({});
   const [orgRejectReason, setOrgRejectReason] = useState<Record<string, string>>({});
   const [targetPickerOpen, setTargetPickerOpen] = useState(false);
   const [taskLogs, setTaskLogs] = useState<TaskChangeLog[]>([]);
@@ -233,12 +222,6 @@ export default function TasksPage() {
       setUsers(Array.isArray(userList) ? userList : []);
 
       if (m.role === 'LEAGUE_ADMIN') {
-        const [reqRes] = await Promise.allSettled([
-          apiFetch<Task[]>('/tasks/admin/requests', { token }),
-        ]);
-        setPendingRequests(
-          reqRes.status === 'fulfilled' && Array.isArray(reqRes.value) ? reqRes.value : [],
-        );
         setOrgReviewRequests([]);
       } else if (m.role === 'ORG_ADMIN' || (m.managedOrgIds ?? []).length > 0) {
         const [orgReq, logs] = await Promise.all([
@@ -247,9 +230,7 @@ export default function TasksPage() {
         ]);
         setOrgReviewRequests(Array.isArray(orgReq) ? orgReq : []);
         setTaskLogs(Array.isArray(logs) ? logs : []);
-        setPendingRequests([]);
       } else {
-        setPendingRequests([]);
         setOrgReviewRequests([]);
         setTaskLogs([]);
       }
@@ -259,7 +240,6 @@ export default function TasksPage() {
       setTasks([]);
       setOrgs([]);
       setUsers([]);
-      setPendingRequests([]);
       setOrgReviewRequests([]);
       setTaskLogs([]);
     }
@@ -310,35 +290,6 @@ export default function TasksPage() {
         method: 'DELETE',
         token,
       });
-      await load();
-    } catch (e) {
-      setErr(e instanceof Error ? e.message : tc('error'));
-    }
-  }
-
-  async function reviewRequest(task: Task, payload: RequestReviewPayload) {
-    if (!token) return;
-    const deleting = isDeleteRequest(task);
-    if (
-      !confirmAction(
-        payload.approve
-          ? deleting
-            ? '确认通过该删除申请吗？通过后活动将被删除。'
-            : '确认通过该活动申请吗？'
-          : deleting
-            ? '确认驳回该删除申请吗？'
-            : '确认驳回该活动申请吗？',
-      )
-    ) {
-      return;
-    }
-    try {
-      await apiFetch(`/tasks/admin/requests/${task.id}/review`, {
-        method: 'PATCH',
-        token,
-        body: JSON.stringify(payload),
-      });
-      setRejectReason((s) => ({ ...s, [task.id]: '' }));
       await load();
     } catch (e) {
       setErr(e instanceof Error ? e.message : tc('error'));
@@ -826,14 +777,29 @@ export default function TasksPage() {
   return (
     <div className="page-container">
       <div className="page-card">
-        <h1 className="page-title">{t('orgActivityTitle')}</h1>
-        <p className="page-subtitle">
-          {isLeagueAdmin
-            ? '审核社团活动申请并发布活动安排。'
-            : isOrgAdmin
-            ? t('orgActivityHint')
-            : '查看已发布到你所属组织的活动安排与任务。'}
-        </p>
+        <div
+          style={{
+            display: 'flex',
+            justifyContent: 'space-between',
+            alignItems: 'flex-start',
+            gap: 12,
+            flexWrap: 'wrap',
+          }}
+        >
+          <div>
+            <h1 className="page-title">{isLeagueAdmin ? '团委任务' : t('orgActivityTitle')}</h1>
+            <p className="page-subtitle">
+              {isLeagueAdmin
+                ? '发布和管理团委任务，统一维护任务进度。'
+                : isOrgAdmin
+                ? t('orgActivityHint')
+                : '查看已发布到你所属组织的活动安排与任务。'}
+            </p>
+          </div>
+          <button type="button" onClick={load}>
+            {tc('refresh')}
+          </button>
+        </div>
 
         {err && (
           <div
@@ -849,14 +815,6 @@ export default function TasksPage() {
             {err}
           </div>
         )}
-
-        <div className="page-section">
-          <div className="card-soft" style={{ display: 'flex', gap: 12, flexWrap: 'wrap' }}>
-            <button type="button" onClick={load}>
-              {tc('refresh')}
-            </button>
-          </div>
-        </div>
 
         {isOrgAdmin ? renderOrgKanban() : null}
 
@@ -1046,66 +1004,6 @@ export default function TasksPage() {
           </div>
         ) : null}
 
-        {isLeagueAdmin && (
-          <div className="page-section">
-            <div className="card-soft">
-              <h3 style={{ marginBottom: 12 }}>社团活动申请审核</h3>
-              {pendingRequests.length === 0 ? (
-                <div className="topbar-muted">暂无待审核申请</div>
-              ) : (
-                <ul className="list-clean">
-                  {pendingRequests.map((row) => {
-                    const deleting = isDeleteRequest(row);
-                    return (
-                    <li key={row.id} className="list-item">
-                      <div style={{ display: 'grid', gap: 8 }}>
-                        <div style={{ display: 'flex', justifyContent: 'space-between', gap: 8, flexWrap: 'wrap' }}>
-                          <strong>{triField(row, 'title', locale)}</strong>
-                          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                            {deleting ? <span className="badge badge-red">删除申请</span> : null}
-                            <span className={approvalBadgeClass(row.approvalStatus)}>
-                              {approvalLabel(row.approvalStatus)}
-                            </span>
-                          </div>
-                        </div>
-                        <div className="topbar-muted">
-                          申请组织：
-                          {triField((row.primaryOrg as Record<string, unknown>) ?? {}, 'name', locale) || '—'} ·
-                          申请人：{row.creator?.name || row.creator?.email || '—'}
-                        </div>
-                        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                          <input
-                            placeholder={deleting ? '驳回删除原因（可选）' : '驳回原因（可选）'}
-                            value={rejectReason[row.id] ?? ''}
-                            onChange={(e) => setRejectReason((s) => ({ ...s, [row.id]: e.target.value }))}
-                            style={{ flex: 1, minWidth: 260 }}
-                          />
-                          <button type="button" onClick={() => reviewRequest(row, { approve: true })}>
-                            {deleting ? '通过删除' : '通过'}
-                          </button>
-                          <button
-                            type="button"
-                            className="logout-btn"
-                            onClick={() =>
-                              reviewRequest(row, {
-                                approve: false,
-                                reason: rejectReason[row.id] || undefined,
-                              })
-                            }
-                          >
-                            {deleting ? '驳回删除' : '驳回'}
-                          </button>
-                        </div>
-                      </div>
-                    </li>
-                    );
-                  })}
-                </ul>
-              )}
-            </div>
-          </div>
-        )}
-
         {isOrgAdmin && (
           <div className="page-section">
             <div className="card-soft">
@@ -1159,11 +1057,9 @@ export default function TasksPage() {
           </div>
         )}
 
-        {isOrgAdmin ? (
-          renderTaskList('正在审核', orgReviewingTasks, '暂无审核中的活动申请')
-        ) : (
-          renderTaskList('活动与任务列表', tasks, '暂无任务')
-        )}
+        {isOrgAdmin
+          ? renderTaskList('正在审核', orgReviewingTasks, '暂无审核中的活动申请')
+          : renderTaskList(isLeagueAdmin ? '团委任务列表' : '活动与任务列表', tasks, '暂无任务')}
 
       </div>
 

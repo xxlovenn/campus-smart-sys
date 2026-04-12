@@ -715,5 +715,29 @@
       "addMajor": "Добавить эту специальность?"
     }
   },
-  "notifications": { "title": "Уведомления", "markAll": "Прочитать все" }
+  "notifications": {
+    "title": "Уведомления",
+    "subtitle": "Непрочитано {unread} / всего {total}",
+    "markAll": "Прочитать все",
+    "empty": "Уведомлений пока нет",
+    "publishedAt": "Время уведомления",
+    "publisher": "Источник",
+    "publisherFallback": "Система",
+    "types": {
+      "leaguePublish": "Публикация комитета",
+      "orgPublish": "Публикация клуба",
+      "reviewResult": "Результат проверки"
+    },
+    "status": {
+      "unread": "Непрочитано",
+      "read": "Прочитано"
+    },
+    "actions": {
+      "markRead": "Отметить прочитанным"
+    },
+    "confirm": {
+      "markOne": "Отметить это уведомление как прочитанное?",
+      "markAll": "Отметить все уведомления как прочитанные?"
+    }
+  }
 }

@@ -253,6 +253,97 @@ export class TasksService {
     );
   }
 
+  private resolveTargetOrganizationIds(task: any): string[] {
+    const orgIds = new Set<string>();
+    if (task.primaryOrgId) orgIds.add(task.primaryOrgId);
+    for (const rel of task.relatedOrgs ?? []) {
+      if (typeof rel.organizationId === 'string') orgIds.add(rel.organizationId);
+    }
+    return Array.from(orgIds);
+  }
+
+  private async resolveTargetOrgUserIds(task: any): Promise<string[]> {
+    const orgIds = this.resolveTargetOrganizationIds(task);
+    if (orgIds.length === 0) return [];
+
+    const [members, orgHeads] = await Promise.all([
+      this.prisma.organizationMember.findMany({
+        where: { organizationId: { in: orgIds } },
+        select: { userId: true },
+      }),
+      this.prisma.organization.findMany({
+        where: { id: { in: orgIds } },
+        select: { adminUserId: true, leaderUserId: true },
+      }),
+    ]);
+
+    const userIds = new Set<string>();
+    for (const row of members) userIds.add(row.userId);
+    for (const row of orgHeads) {
+      if (row.adminUserId) userIds.add(row.adminUserId);
+      if (row.leaderUserId) userIds.add(row.leaderUserId);
+    }
+    return Array.from(userIds);
+  }
+
+  private async sendTaskPublishedNotifications(
+    taskId: string,
+    source: typeof SOURCE[keyof typeof SOURCE],
+    excludeUserIds: string[] = [],
+  ) {
+    const task = await (this.prisma.task as any).findUnique({
+      where: { id: taskId },
+      include: { relatedOrgs: true },
+    });
+    if (!task || task.approvalStatus !== APPROVAL.APPROVED) return;
+
+    const [orgUserIds, studentUserIds] = await Promise.all([
+      this.resolveTargetOrgUserIds(task),
+      this.resolveTargetStudentIds(task),
+    ]);
+    const blocked = new Set(excludeUserIds.filter(Boolean));
+    const orgRecipients = orgUserIds.filter((id) => !blocked.has(id));
+    const studentRecipients = studentUserIds.filter((id) => !blocked.has(id));
+
+    const orgTitle =
+      source === SOURCE.LEAGUE_PUBLISHED
+        ? { zh: '团委发布新任务/活动', en: 'New league task/activity', ru: 'Новая задача/активность от комитета' }
+        : { zh: '社团发布新任务/活动', en: 'New club task/activity', ru: 'Новая задача/активность от клуба' };
+    const studentTitle =
+      source === SOURCE.LEAGUE_PUBLISHED
+        ? { zh: '收到新的任务/活动通知', en: 'New task/activity notice', ru: 'Новое уведомление о задаче/активности' }
+        : { zh: '收到社团任务/活动通知', en: 'New club task/activity notice', ru: 'Новое уведомление о клубной задаче/активности' };
+
+    if (orgRecipients.length > 0) {
+      await this.prisma.notification.createMany({
+        data: orgRecipients.map((userId) => ({
+          userId,
+          titleZh: orgTitle.zh,
+          titleEn: orgTitle.en,
+          titleRu: orgTitle.ru,
+          bodyZh: task.titleZh,
+          bodyEn: task.titleEn,
+          bodyRu: task.titleRu,
+          taskId: task.id,
+        })),
+      });
+    }
+    if (studentRecipients.length > 0) {
+      await this.prisma.notification.createMany({
+        data: studentRecipients.map((userId) => ({
+          userId,
+          titleZh: studentTitle.zh,
+          titleEn: studentTitle.en,
+          titleRu: studentTitle.ru,
+          bodyZh: task.titleZh,
+          bodyEn: task.titleEn,
+          bodyRu: task.titleRu,
+          taskId: task.id,
+        })),
+      });
+    }
+  }
+
   private async finalizeTaskApproval(taskId: string) {
     const task = await (this.prisma.task as any).findUnique({
       where: { id: taskId },
@@ -665,6 +756,10 @@ export class TasksService {
       detailRu: approve ? 'Одобрено комитетом' : `Отклонено комитетом: ${reason?.trim() || 'Без причины'}`,
     });
 
+    if (approve && finalized?.approvalStatus === APPROVAL.APPROVED) {
+      await this.sendTaskPublishedNotifications(updated.id, updated.source, [updated.creatorId]);
+    }
+
     return finalized ?? updated;
   }
 
@@ -730,6 +825,9 @@ export class TasksService {
       detailEn: approve ? 'Approved by co-organizer' : `Rejected by co-organizer: ${reason?.trim() || 'No reason'}`,
       detailRu: approve ? 'Одобрено соорганизатором' : `Отклонено соорганизатором: ${reason?.trim() || 'Без причины'}`,
     });
+    if (approve && finalized?.approvalStatus === APPROVAL.APPROVED) {
+      await this.sendTaskPublishedNotifications(taskId, finalized.source);
+    }
     return finalized;
   }
 
@@ -907,6 +1005,10 @@ export class TasksService {
           taskId: task.id,
         },
       });
+    }
+
+    if (task.approvalStatus === APPROVAL.APPROVED) {
+      await this.sendTaskPublishedNotifications(task.id, task.source, dto.assigneeId ? [dto.assigneeId] : []);
     }
 
     await this.appendTaskLog({

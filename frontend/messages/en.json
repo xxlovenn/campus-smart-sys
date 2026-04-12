@@ -715,5 +715,29 @@
       "addMajor": "Add this major?"
     }
   },
-  "notifications": { "title": "Notifications", "markAll": "Mark all read" }
+  "notifications": {
+    "title": "Notifications",
+    "subtitle": "{unread} unread / {total} total",
+    "markAll": "Mark all read",
+    "empty": "No notifications",
+    "publishedAt": "Published at",
+    "publisher": "Publisher",
+    "publisherFallback": "System",
+    "types": {
+      "leaguePublish": "League Publish",
+      "orgPublish": "Org Publish",
+      "reviewResult": "Review Result"
+    },
+    "status": {
+      "unread": "Unread",
+      "read": "Read"
+    },
+    "actions": {
+      "markRead": "Mark read"
+    },
+    "confirm": {
+      "markOne": "Mark this notification as read?",
+      "markAll": "Mark all notifications as read?"
+    }
+  }
 }
